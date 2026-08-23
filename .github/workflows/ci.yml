@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend (Go)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: backend/go.sum
+      - name: Download deps
+        run: go mod download
+      - name: Vet
+        run: go vet ./...
+      - name: Build
+        run: go build ./...
+      - name: Test
+        run: go test -race -count=1 ./...
+
+  dashboard:
+    name: Dashboard (Next.js)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build
+        run: npm run build
+
+  sdk:
+    name: SDK smoke check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Parse browser SDK
+        run: node --check sdk/ndovu-browser.js
+      - name: Parse Node SDK
+        run: node --check sdk/ndovu-node.js
+      - name: Parse React Native SDK
+        run: node --check sdk/ndovu-react-native.js
+      - name: Parse Next SDK
+        run: node --check sdk/ndovu-next.js
+      - name: Import Node SDK (sanity)
+        run: node -e "import('./sdk/ndovu-node.js').then(m => { if (!m.createNdovu) throw new Error('createNdovu export missing'); console.log('SDK Node ok'); })"
+      - name: Import React Native SDK (sanity — sem executar createNdovu)
+        run: node -e "import('./sdk/ndovu-react-native.js').then(m => { if (!m.createNdovu) throw new Error('createNdovu export missing'); console.log('SDK RN ok'); })"

@@ -1,0 +1,44 @@
+# Env / segredos
+.env
+.env.local
+.env.*.local
+*.env.local
+
+# Dependências e build — dashboard (Next.js / Node)
+node_modules/
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+
+# Dependências e build — SDKs (Node)
+sdk/node_modules/
+sdk/dist/
+
+# Backend Go — artefatos e cobertura
+backend/bin/
+backend/*.test
+backend/coverage.out
+backend/coverage.html
+
+# Docker / dados locais (não devem entrar no repo)
+data/
+volumes/
+*.pid
+*.sock
+
+# Logs
+*.log
+logs/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Temporários
+tmp/
+*.tmp

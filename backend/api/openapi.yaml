@@ -1,0 +1,591 @@
+openapi: "3.0.3"
+info:
+  title: Ndovu API
+  version: "1.0.0"
+  description: |
+    API de rastreamento de jornada de usuário em frontends.
+    Ingestão em lote (contrato v1, agnóstico de tecnologia) publicada em stream
+    durável (NATS JetStream) e persistida em ClickHouse; consulta read-only
+    para troubleshooting. Ver docs/CONTRACT.md para o contrato completo.
+servers:
+  - url: http://localhost:8080
+tags:
+  - name: auth
+    description: Autenticação e administração do backoffice (control plane)
+  - name: ingestao
+    description: Escrita de traces (única escrita da aplicação)
+  - name: consulta
+    description: Consulta read-only para o dashboard
+  - name: infra
+paths:
+  /health:
+    get:
+      tags: [infra]
+      summary: Liveness/readiness probe
+      responses:
+        "200":
+          description: OK
+  /v1/auth/login:
+    post:
+      tags: [auth]
+      summary: Autentica um usuário do backoffice e emite um JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password }
+      responses:
+        "200":
+          description: Token emitido
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  expiresAt: { type: string, format: date-time }
+                  user: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/auth/me:
+    get:
+      tags: [auth]
+      summary: Identidade do token apresentado
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Identidade
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /v1/admin/users:
+    get:
+      tags: [auth]
+      summary: Lista usuários (admin)
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Usuários
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items: { $ref: "#/components/schemas/User" }
+    post:
+      tags: [auth]
+      summary: Cria usuário (admin)
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, name, password, role]
+              properties:
+                email: { type: string, format: email }
+                name: { type: string }
+                password: { type: string, minLength: 8 }
+                role: { type: string, enum: [admin, viewer] }
+      responses:
+        "201":
+          description: Usuário criado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "409":
+          description: E-mail já cadastrado
+  /v1/admin/users/{id}:
+    patch:
+      tags: [auth]
+      summary: Altera papel/ativação/nome/senha de um usuário (admin)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role: { type: string, enum: [admin, viewer] }
+                active: { type: boolean }
+                name: { type: string }
+                password: { type: string, minLength: 8 }
+      responses:
+        "200":
+          description: Usuário atualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/admin/api-keys:
+    get:
+      tags: [auth]
+      summary: Lista chaves de ingestão (admin)
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Chaves (sem o valor em claro)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  keys:
+                    type: array
+                    items: { $ref: "#/components/schemas/APIKey" }
+    post:
+      tags: [auth]
+      summary: Cria chave de ingestão para um app (admin)
+      description: A resposta é a única vez em que a chave aparece em claro.
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [app]
+              properties:
+                app: { type: string }
+                label: { type: string }
+      responses:
+        "201":
+          description: Chave criada
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/APIKey"
+                  - type: object
+                    properties:
+                      key: { type: string, description: valor em claro (única exibição) }
+  /v1/admin/api-keys/{id}:
+    delete:
+      tags: [auth]
+      summary: Revoga uma chave (efeito imediato na ingestão)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Revogada
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/admin/apps:
+    get:
+      tags: [auth]
+      summary: Lista apps emissores (frontends) cadastrados
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Apps
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  apps:
+                    type: array
+                    items: { $ref: "#/components/schemas/App" }
+    post:
+      tags: [auth]
+      summary: Cadastra um app e gera a chave de API (única exibição)
+      description: A resposta é a única vez em que a chave aparece em claro — copie e envie ao responsável da integração.
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, example: portal-cliente }
+                technology: { type: string, example: React }
+                company: { type: string, example: ACME Ltda }
+                responsible: { type: string, example: ana@acme.com }
+      responses:
+        "201":
+          description: App criado + chave gerada
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/App"
+                  - type: object
+                    properties:
+                      key: { type: string, description: valor em claro (única exibição) }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /v1/admin/apps/{id}:
+    get:
+      tags: [auth]
+      summary: Detalhe de um app
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: App
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/App" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [auth]
+      summary: Altera os metadados de um app
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                technology: { type: string }
+                company: { type: string }
+                responsible: { type: string }
+      responses:
+        "200":
+          description: App atualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/App" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [auth]
+      summary: Exclui um app e revoga todas as suas chaves
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Excluído
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/events:
+    post:
+      tags: [ingestao]
+      summary: Ingere um lote de eventos de um frontend
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IngestRequest"
+      responses:
+        "202":
+          description: Lote validado e enfileirado (persistência assíncrona)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted: { type: integer, description: eventos enfileirados }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "413":
+          description: Payload acima do limite
+    get:
+      tags: [consulta]
+      summary: Lista eventos com filtros combináveis
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: app, in: query, schema: { type: string } }
+        - { name: userId, in: query, schema: { type: string } }
+        - { name: sessionId, in: query, schema: { type: string } }
+        - { name: type, in: query, schema: { type: string, enum: [page_view, action, http_request, error, custom] } }
+        - { name: feature, in: query, schema: { type: string } }
+        - { name: name, in: query, schema: { type: string } }
+        - { name: screen, in: query, schema: { type: string } }
+        - { name: route, in: query, schema: { type: string }, description: "Match parcial no endpoint HTTP" }
+        - { name: statusMin, in: query, schema: { type: integer } }
+        - { name: statusMax, in: query, schema: { type: integer } }
+        - { name: onlyErrors, in: query, schema: { type: boolean } }
+        - { name: search, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 500 } }
+        - { name: cursor, in: query, schema: { type: string }, description: "Cursor keyset da página anterior" }
+      responses:
+        "200":
+          description: Página de eventos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items: { $ref: "#/components/schemas/TraceEvent" }
+                  nextCursor: { type: string }
+  /v1/events/{id}:
+    get:
+      tags: [consulta]
+      summary: Detalhe de um evento (payloads completos)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Evento
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TraceEvent" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/sessions:
+    get:
+      tags: [consulta]
+      summary: Lista sessões (agrupador do rastro)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: app, in: query, schema: { type: string } }
+        - { name: userId, in: query, schema: { type: string } }
+        - { name: onlyErrors, in: query, schema: { type: boolean } }
+        - { name: limit, in: query, schema: { type: integer, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, default: 0 } }
+      responses:
+        "200":
+          description: Página de sessões
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions:
+                    type: array
+                    items: { $ref: "#/components/schemas/Session" }
+                  total: { type: integer }
+  /v1/sessions/{sessionId}:
+    get:
+      tags: [consulta]
+      summary: Sessão + rastro cronológico completo (timeline)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: sessionId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Detalhe da sessão
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session: { $ref: "#/components/schemas/Session" }
+                  timeline:
+                    type: array
+                    items: { $ref: "#/components/schemas/TraceEvent" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/stats/overview:
+    get:
+      tags: [consulta]
+      summary: Métricas agregadas da janela (série temporal, top rotas, top erros)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: app, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Overview
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Overview" }
+  /v1/meta/filters:
+    get:
+      tags: [consulta]
+      summary: Valores distintos existentes na base (para montar filtros)
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Opções de filtro
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  apps: { type: array, items: { type: string } }
+                  types: { type: array, items: { type: string } }
+                  features: { type: array, items: { type: string } }
+                  names: { type: array, items: { type: string } }
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    BadRequest:
+      description: Violação de contrato
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: X-Api-Key ausente ou inválida
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Recurso não encontrado
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: "Recurso já existe (ex.: nome de app duplicado)"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+        details:
+          type: array
+          items: { type: string }
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string }
+        name: { type: string }
+        role: { type: string, enum: [admin, viewer] }
+        active: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    APIKey:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        app: { type: string }
+        label: { type: string }
+        prefix: { type: string, description: primeiros caracteres, para identificação }
+        active: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        revokedAt: { type: string, format: date-time }
+    App:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        technology: { type: string }
+        company: { type: string }
+        responsible: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    IngestRequest:
+      type: object
+      required: [app, session, events]
+      properties:
+        app: { type: string, example: portal-cliente }
+        sdkVersion: { type: string }
+        session:
+          type: object
+          required: [sessionId]
+          properties:
+            sessionId: { type: string }
+            userId: { type: string }
+            userAgent: { type: string }
+            attributes: { type: object, additionalProperties: true }
+        events:
+          type: array
+          maxItems: 500
+          items: { $ref: "#/components/schemas/IngestEvent" }
+    IngestEvent:
+      type: object
+      required: [eventId, type, name, timestamp]
+      properties:
+        eventId: { type: string, format: uuid }
+        type: { type: string, enum: [page_view, action, http_request, error, custom] }
+        name: { type: string, example: login_success }
+        feature: { type: string, example: login }
+        screen: { type: string, example: /login }
+        timestamp: { type: string, format: date-time }
+        durationMs: { type: integer }
+        userId: { type: string }
+        http:
+          type: object
+          properties:
+            method: { type: string }
+            url: { type: string }
+            statusCode: { type: integer }
+            requestBody: {}
+            responseBody: {}
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+            body: {}
+        metadata: { type: object, additionalProperties: true }
+    TraceEvent:
+      allOf:
+        - $ref: "#/components/schemas/IngestEvent"
+        - type: object
+          properties:
+            sessionId: { type: string }
+            app: { type: string }
+            receivedAt: { type: string, format: date-time }
+    Session:
+      type: object
+      properties:
+        sessionId: { type: string }
+        userId: { type: string }
+        app: { type: string }
+        userAgent: { type: string }
+        attributes: { type: object, additionalProperties: true }
+        startedAt: { type: string, format: date-time }
+        lastEventAt: { type: string, format: date-time }
+        eventCount: { type: integer }
+        errorCount: { type: integer }
+    Overview:
+      type: object
+      properties:
+        totalEvents: { type: integer }
+        totalSessions: { type: integer }
+        totalUsers: { type: integer }
+        totalErrors: { type: integer }
+        errorRate: { type: number }
+        avgDurationMs: { type: number }
+        series:
+          type: array
+          items:
+            type: object
+            properties:
+              bucket: { type: string, format: date-time }
+              total: { type: integer }
+              errors: { type: integer }
+        topRoutes:
+          type: array
+          items:
+            type: object
+            properties:
+              url: { type: string }
+              count: { type: integer }
+              errors: { type: integer }
+              avgMs: { type: number }
+              p95Ms: { type: number }
+        topErrors:
+          type: array
+          items:
+            type: object
+            properties:
+              code: { type: string }
+              message: { type: string }
+              count: { type: integer }

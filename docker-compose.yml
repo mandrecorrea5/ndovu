@@ -1,0 +1,179 @@
+name: ndovu
+
+x-app-env: &app-env
+  NDOVU_CLICKHOUSE_ADDR: clickhouse:9000
+  NDOVU_CLICKHOUSE_DB: ${CLICKHOUSE_DB:-ndovu}
+  NDOVU_CLICKHOUSE_USER: ${CLICKHOUSE_USER:-ndovu}
+  NDOVU_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-ndovu}
+  NDOVU_NATS_URL: nats://nats:4222
+  NDOVU_LOG_LEVEL: ${NDOVU_LOG_LEVEL:-info}
+  # Postgres precisa ser visível também pelo writer (avaliador de alertas).
+  NDOVU_POSTGRES_URL: postgres://${POSTGRES_USER:-ndovu}:${POSTGRES_PASSWORD:-ndovu}@postgres:5432/${POSTGRES_DB:-ndovu}?sslmode=disable
+  # Digest semanal: aponta pro MailHog local por default. Em prod, defina
+  # NDOVU_SMTP_HOST/PORT/USER/PASSWORD/FROM apontando para SES/SendGrid.
+  NDOVU_SMTP_HOST: ${NDOVU_SMTP_HOST:-mailhog}
+  NDOVU_SMTP_PORT: ${NDOVU_SMTP_PORT:-1025}
+  NDOVU_SMTP_USER: ${NDOVU_SMTP_USER:-}
+  NDOVU_SMTP_PASSWORD: ${NDOVU_SMTP_PASSWORD:-}
+  NDOVU_SMTP_FROM: ${NDOVU_SMTP_FROM:-ndovu@localhost}
+  NDOVU_DIGEST_RECIPIENTS: ${NDOVU_DIGEST_RECIPIENTS:-}
+  NDOVU_DIGEST_DASHBOARD_URL: ${NDOVU_DIGEST_DASHBOARD_URL:-http://localhost:13000}
+  # Session snapshots (Sprint H): storage no MinIO local (mesmo do cold F.2).
+  # Em prod aponta pro AWS S3 real trocando NDOVU_S3_ENDPOINT.
+  NDOVU_S3_ENDPOINT: ${NDOVU_S3_ENDPOINT:-minio:9000}
+  NDOVU_S3_ACCESS_KEY: ${NDOVU_S3_ACCESS_KEY:-ndovu}
+  NDOVU_S3_SECRET_KEY: ${NDOVU_S3_SECRET_KEY:-ndovu-secret}
+  NDOVU_S3_USE_SSL: ${NDOVU_S3_USE_SSL:-false}
+  NDOVU_SNAPSHOT_BUCKET: ${NDOVU_SNAPSHOT_BUCKET:-ndovu-snapshots}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ndovu}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ndovu}
+      POSTGRES_DB: ${POSTGRES_DB:-ndovu}
+    ports:
+      - "55432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ndovu} -d ${POSTGRES_DB:-ndovu}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8-alpine
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-ndovu}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-ndovu}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-ndovu}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ports:
+      - "8123:8123"   # HTTP (debug/console)
+      - "9000:9000"   # protocolo nativo
+    volumes:
+      - chdata:/var/lib/clickhouse
+      # Retenção em camadas (F.1): volume separado onde dados quentes
+      # migram após 7d via TTL TO DISK. Em prod, este volume pode ser um
+      # HDD mais barato; aqui é só uma prova de conceito.
+      - chdata-warm:/warm
+      # storage policy `tiered` (hot=default + warm + cold s3).
+      - ./infra/clickhouse/storage.xml:/etc/clickhouse-server/config.d/storage.xml:ro
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8123/ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  nats:
+    image: nats:2.10-alpine
+    command: ["-js", "-sd", "/data", "-m", "8222"]
+    ports:
+      - "4222:4222"
+    volumes:
+      - natsdata:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # MailHog: SMTP fake para testar o digest sem SaaS externo.
+  # UI web em :18025 lista os e-mails recebidos.
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports:
+      - "11025:1025"   # SMTP (para clientes externos ao compose)
+      - "18025:8025"   # UI web
+
+  # MinIO: S3-compatible local para o cold tier do ClickHouse (Sprint F.2).
+  # Em prod, o mesmo config aponta pra AWS S3 real trocando NDOVU_S3_ENDPOINT.
+  # Console web em :19001, API S3 em :19000.
+  minio:
+    image: minio/minio:latest
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-ndovu}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-ndovu-secret}
+    ports:
+      - "19000:9000"   # API S3
+      - "19001:9001"   # Console web
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Provisiona o bucket que o ClickHouse vai usar como cold tier.
+  # Roda uma vez, cria o bucket se não existir, depois sai.
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-ndovu} ${MINIO_ROOT_PASSWORD:-ndovu-secret};
+      mc mb --ignore-existing local/ndovu-cold;
+      mc mb --ignore-existing local/ndovu-snapshots;
+      echo 'buckets ndovu-cold e ndovu-snapshots prontos';
+      "
+
+  api:
+    build: ./backend
+    environment:
+      <<: *app-env
+      NDOVU_PORT: 8080
+      NDOVU_CORS_ORIGINS: ${NDOVU_CORS_ORIGINS:-*}
+      NDOVU_AUTH_SECRET: ${NDOVU_AUTH_SECRET:-dev-secret-troque-em-producao}
+      NDOVU_ADMIN_EMAIL: ${NDOVU_ADMIN_EMAIL:-admin@ndovu.local}
+      NDOVU_ADMIN_PASSWORD: ${NDOVU_ADMIN_PASSWORD:-admin12345}
+      NDOVU_BOOTSTRAP_INGEST_KEY: ${NDOVU_BOOTSTRAP_INGEST_KEY:-dev-ingest-key}
+    ports:
+      - "18081:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+
+  writer:
+    build: ./backend
+    entrypoint: ["/ndovu-writer"]
+    environment:
+      <<: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+
+  dashboard:
+    build:
+      context: ./dashboard
+      args:
+        # URL da API vista PELO BROWSER do usuário (não pela rede interna do compose)
+        NEXT_PUBLIC_NDOVU_API: ${NEXT_PUBLIC_NDOVU_API:-http://localhost:18081}
+    ports:
+      - "13000:3000"
+    depends_on:
+      - api
+
+volumes:
+  chdata:
+  chdata-warm:
+  natsdata:
+  pgdata:
+  miniodata:
