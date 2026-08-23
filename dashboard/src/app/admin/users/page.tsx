@@ -19,6 +19,18 @@ type FormState = {
 };
 const EMPTY: FormState = { email: '', name: '', password: '', role: 'viewer', companyId: '' };
 
+// generatePassword devolve uma senha aleatória "curta e legível" — 12
+// caracteres, sem ambiguidade visual (sem 0/O/1/l/I). Suficiente pra
+// primeiro acesso; o usuário troca depois.
+function generatePassword(): string {
+  const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  const bytes = new Uint32Array(12);
+  crypto.getRandomValues(bytes);
+  let out = '';
+  for (const b of bytes) out += alphabet[b % alphabet.length];
+  return out;
+}
+
 export default function AdminUsersPage() {
   const qc = useQueryClient();
   const me = getSessionUser();
@@ -32,6 +44,11 @@ export default function AdminUsersPage() {
   const [editing, setEditing] = useState<AdminUser | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY);
   const [feedback, setFeedback] = useState('');
+  // Quando o admin salva com senha preenchida, exibimos um toast leve de sucesso.
+  const [passwordChangedFor, setPasswordChangedFor] = useState<string | null>(null);
+  // Modal simples de "resetar senha" acionado direto na linha da tabela.
+  const [resetting, setResetting] = useState<AdminUser | null>(null);
+  const [resetPassword, setResetPassword] = useState('');
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['admin-users'] });
 
@@ -57,19 +74,38 @@ export default function AdminUsersPage() {
           companyId: form.companyId,
         };
         if (form.password) patch.password = form.password;
-        return api.updateUser(editing.id, patch);
+        return { user: await api.updateUser(editing.id, patch), passwordChanged: !!form.password };
       }
-      return api.createUser({
+      const user = await api.createUser({
         email: form.email,
         name: form.name,
         password: form.password,
         role: form.role,
         companyId: form.companyId,
       });
+      return { user, passwordChanged: false };
     },
-    onSuccess: () => {
+    onSuccess: ({ user, passwordChanged }) => {
       invalidate();
       setOpen(false);
+      if (passwordChanged) {
+        setPasswordChangedFor(user.email);
+        setTimeout(() => setPasswordChangedFor(null), 4000);
+      }
+    },
+    onError: (err) =>
+      setFeedback(err instanceof ApiError ? (err.details?.join('; ') ?? err.message) : 'Erro'),
+  });
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: () =>
+      api.updateUser(resetting!.id, { password: resetPassword }),
+    onSuccess: () => {
+      const email = resetting?.email ?? '';
+      setResetting(null);
+      setResetPassword('');
+      setPasswordChangedFor(email);
+      setTimeout(() => setPasswordChangedFor(null), 4000);
     },
     onError: (err) =>
       setFeedback(err instanceof ApiError ? (err.details?.join('; ') ?? err.message) : 'Erro'),
@@ -99,6 +135,11 @@ export default function AdminUsersPage() {
       </div>
 
       {feedback && !open ? <p className="text-sm text-critical">{feedback}</p> : null}
+      {passwordChangedFor ? (
+        <div className="rounded-md border border-good/40 bg-good/10 px-3 py-2 text-sm text-good">
+          Senha de <span className="mono">{passwordChangedFor}</span> atualizada com sucesso.
+        </div>
+      ) : null}
       {error ? <ErrorState message={(error as Error).message} /> : null}
       {isLoading ? <LoadingState /> : null}
 
@@ -135,9 +176,18 @@ export default function AdminUsersPage() {
                     {fmtDateTime(u.createdAt)}
                   </td>
                   <td className="px-3 py-2">
-                    <div className="flex gap-1">
+                    <div className="flex flex-wrap gap-1">
                       <Button size="sm" onClick={() => openEdit(u)}>
                         editar
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setResetting(u);
+                          setResetPassword(generatePassword());
+                        }}
+                      >
+                        senha
                       </Button>
                       <Button
                         size="sm"
@@ -218,21 +268,54 @@ export default function AdminUsersPage() {
               <option value="admin">admin — gerencia</option>
             </Select>
           </Field>
-          <Field
-            label={editing ? 'Nova senha (opcional)' : 'Senha inicial'}
-            required={!editing}
-            htmlFor="user-pass"
+          <div
+            className={
+              editing
+                ? 'rounded-md border border-hairline bg-plane/60 px-3 py-3 space-y-2'
+                : 'space-y-2'
+            }
           >
-            <Input
-              id="user-pass"
-              type="password"
-              minLength={8}
+            <Field
+              label={editing ? 'Alterar senha (opcional)' : 'Senha inicial'}
               required={!editing}
-              value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })}
-              placeholder={editing ? 'deixe em branco para não alterar' : ''}
-            />
-          </Field>
+              htmlFor="user-pass"
+              hint={
+                editing
+                  ? 'Preencha só se quiser trocar. Mínimo 8 caracteres.'
+                  : 'Mínimo 8 caracteres. Use "Gerar" para uma senha aleatória.'
+              }
+            >
+              <div className="flex gap-2">
+                <Input
+                  id="user-pass"
+                  type="text"
+                  minLength={8}
+                  required={!editing}
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  placeholder={editing ? 'deixe em branco para não alterar' : ''}
+                  autoComplete="new-password"
+                  className="mono"
+                />
+                <Button
+                  type="button"
+                  onClick={() => setForm({ ...form, password: generatePassword() })}
+                >
+                  gerar
+                </Button>
+                {form.password ? (
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(form.password);
+                    }}
+                  >
+                    copiar
+                  </Button>
+                ) : null}
+              </div>
+            </Field>
+          </div>
           {editing && form.companyId ? (
             <UserPermissionsPanel
               userId={editing.id}
@@ -245,6 +328,67 @@ export default function AdminUsersPage() {
             <Button onClick={() => setOpen(false)}>cancelar</Button>
             <Button variant="primary" type="submit" loading={save.isPending}>
               {editing ? 'salvar' : 'criar'}
+            </Button>
+          </ModalActions>
+        </form>
+      </Modal>
+
+      <Modal
+        open={!!resetting}
+        onClose={() => {
+          setResetting(null);
+          setResetPassword('');
+        }}
+        title={resetting ? `Resetar senha: ${resetting.email}` : ''}
+        description="Gera uma nova senha para o usuário. Copie e envie por canal seguro — o valor não fica salvo em claro depois de aplicado."
+      >
+        <form
+          className="space-y-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (resetPassword.length >= 8) resetPasswordMutation.mutate();
+          }}
+        >
+          <Field label="Nova senha" required hint="Mínimo 8 caracteres.">
+            <div className="flex gap-2">
+              <Input
+                type="text"
+                minLength={8}
+                required
+                value={resetPassword}
+                onChange={(e) => setResetPassword(e.target.value)}
+                autoComplete="new-password"
+                className="mono"
+              />
+              <Button type="button" onClick={() => setResetPassword(generatePassword())}>
+                gerar
+              </Button>
+              {resetPassword ? (
+                <Button
+                  type="button"
+                  onClick={() => navigator.clipboard?.writeText(resetPassword)}
+                >
+                  copiar
+                </Button>
+              ) : null}
+            </div>
+          </Field>
+          <ModalActions>
+            <Button
+              onClick={() => {
+                setResetting(null);
+                setResetPassword('');
+              }}
+            >
+              cancelar
+            </Button>
+            <Button
+              variant="primary"
+              type="submit"
+              loading={resetPasswordMutation.isPending}
+              disabled={resetPassword.length < 8}
+            >
+              resetar senha
             </Button>
           </ModalActions>
         </form>

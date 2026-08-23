@@ -233,6 +233,11 @@ func (s *AnomalyService) Delete(ctx context.Context, id string) error {
 	return s.store.DeleteAnomalyRule(ctx, id)
 }
 
+// Get resolve uma regra por id (ownership check no admin).
+func (s *AnomalyService) Get(ctx context.Context, id string) (domain.AnomalyRule, error) {
+	return s.store.GetAnomalyRule(ctx, id)
+}
+
 // List devolve todas as regras.
 func (s *AnomalyService) List(ctx context.Context) ([]domain.AnomalyRule, error) {
 	return s.store.ListAnomalyRules(ctx)

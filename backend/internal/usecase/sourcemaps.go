@@ -87,6 +87,11 @@ func (s *SourceMapService) List(ctx context.Context, app, release string) ([]dom
 	return s.store.ListSourceMaps(ctx, app, release)
 }
 
+// Get resolve um source map por id (ownership check no admin).
+func (s *SourceMapService) Get(ctx context.Context, id string) (domain.SourceMap, error) {
+	return s.store.GetSourceMap(ctx, id)
+}
+
 // Delete remove um source map pelo id.
 func (s *SourceMapService) Delete(ctx context.Context, id string) error {
 	// Cache: como não temos app/release aqui, dropamos tudo.

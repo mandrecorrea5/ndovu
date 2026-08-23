@@ -74,9 +74,19 @@ func (s *AppService) List(ctx context.Context) ([]domain.App, error) {
 	return s.apps.ListApps(ctx)
 }
 
+// ListByCompany filtra apps por company — usar para admin não-super.
+func (s *AppService) ListByCompany(ctx context.Context, companyID string) ([]domain.App, error) {
+	return s.apps.ListAppsByCompany(ctx, companyID)
+}
+
 // Get retorna um app por id.
 func (s *AppService) Get(ctx context.Context, id string) (domain.App, error) {
 	return s.apps.GetApp(ctx, id)
+}
+
+// GetByName resolve um app pelo `name` (usado no ownership check de chaves).
+func (s *AppService) GetByName(ctx context.Context, name string) (domain.App, error) {
+	return s.apps.GetAppByName(ctx, name)
 }
 
 // UpdateAppInput são os campos editáveis de um app.

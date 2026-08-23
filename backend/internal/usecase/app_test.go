@@ -42,6 +42,19 @@ func (f *fakeAppStore) ListAppNamesByCompany(_ context.Context, _ string) ([]str
 	return nil, nil
 }
 
+func (f *fakeAppStore) ListAppsByCompany(_ context.Context, _ string) ([]domain.App, error) {
+	return f.apps, nil
+}
+
+func (f *fakeAppStore) GetAppByName(_ context.Context, name string) (domain.App, error) {
+	for _, a := range f.apps {
+		if a.Name == name {
+			return a, nil
+		}
+	}
+	return domain.App{}, domain.ErrNotFound
+}
+
 func (f *fakeAppStore) UpdateApp(_ context.Context, id string, a domain.App) (domain.App, error) {
 	return a, nil
 }
@@ -62,6 +75,17 @@ func (f *fakeAppKeyStore) CreateAPIKey(_ context.Context, k domain.APIKey, keyHa
 	return k, nil
 }
 func (f *fakeAppKeyStore) ListAPIKeys(_ context.Context) ([]domain.APIKey, error) { return f.keys, nil }
+func (f *fakeAppKeyStore) ListAPIKeysByCompany(_ context.Context, _ string) ([]domain.APIKey, error) {
+	return f.keys, nil
+}
+func (f *fakeAppKeyStore) GetAPIKeyByID(_ context.Context, id string) (domain.APIKey, error) {
+	for _, k := range f.keys {
+		if k.ID == id {
+			return k, nil
+		}
+	}
+	return domain.APIKey{}, domain.ErrNotFound
+}
 func (f *fakeAppKeyStore) RevokeAPIKey(_ context.Context, id string) error {
 	f.revoked = append(f.revoked, id)
 	return nil

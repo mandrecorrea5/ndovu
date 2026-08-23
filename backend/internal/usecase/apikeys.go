@@ -103,9 +103,21 @@ func (s *APIKeyService) CreateKey(ctx context.Context, appID, app, label, create
 	return CreatedKey{APIKey: key, Key: plaintext}, nil
 }
 
-// ListKeys lista as chaves (nunca expõe hash nem chave em claro).
+// ListKeys lista as chaves (visão global — usar só para super-admin).
+// Nunca expõe hash nem chave em claro.
 func (s *APIKeyService) ListKeys(ctx context.Context) ([]domain.APIKey, error) {
 	return s.store.ListAPIKeys(ctx)
+}
+
+// ListKeysByCompany filtra por company — usar para admin não-super.
+func (s *APIKeyService) ListKeysByCompany(ctx context.Context, companyID string) ([]domain.APIKey, error) {
+	return s.store.ListAPIKeysByCompany(ctx, companyID)
+}
+
+// GetKeyByID resolve uma chave pelo id — usado no ownership check antes
+// de revogar.
+func (s *APIKeyService) GetKeyByID(ctx context.Context, id string) (domain.APIKey, error) {
+	return s.store.GetAPIKeyByID(ctx, id)
 }
 
 // RevokeKey desativa uma chave e invalida o cache imediatamente.

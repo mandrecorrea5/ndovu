@@ -63,6 +63,16 @@ func (f *fakeUserStore) ListUsers(_ context.Context) ([]domain.User, error) {
 	return out, nil
 }
 
+func (f *fakeUserStore) ListUsersByCompany(_ context.Context, companyID string) ([]domain.User, error) {
+	out := []domain.User{}
+	for _, u := range f.users {
+		if u.CompanyID == companyID {
+			out = append(out, u)
+		}
+	}
+	return out, nil
+}
+
 func (f *fakeUserStore) UpdateUser(_ context.Context, id string, role *domain.Role, active *bool, name *string, companyID *string) (domain.User, error) {
 	u, ok := f.users[id]
 	if !ok {
@@ -282,6 +292,17 @@ func (f *fakeKeyStore) ListAPIKeys(_ context.Context) ([]domain.APIKey, error) {
 		out = append(out, k)
 	}
 	return out, nil
+}
+
+func (f *fakeKeyStore) ListAPIKeysByCompany(_ context.Context, _ string) ([]domain.APIKey, error) {
+	return f.ListAPIKeys(context.Background())
+}
+
+func (f *fakeKeyStore) GetAPIKeyByID(_ context.Context, id string) (domain.APIKey, error) {
+	if k, ok := f.keys[id]; ok {
+		return k, nil
+	}
+	return domain.APIKey{}, domain.ErrNotFound
 }
 
 func (f *fakeKeyStore) RevokeAPIKey(_ context.Context, id string) error {

@@ -32,6 +32,14 @@ func (f *fakeAnomalyStore) DeleteAnomalyRule(context.Context, string) error { re
 func (f *fakeAnomalyStore) ListAnomalyRules(context.Context) ([]domain.AnomalyRule, error) {
 	return f.rules, nil
 }
+func (f *fakeAnomalyStore) GetAnomalyRule(_ context.Context, id string) (domain.AnomalyRule, error) {
+	for _, r := range f.rules {
+		if r.ID == id {
+			return r, nil
+		}
+	}
+	return domain.AnomalyRule{}, domain.ErrNotFound
+}
 func (f *fakeAnomalyStore) LastDetection(_ context.Context, ruleID string) (domain.AnomalyDetection, error) {
 	if d, ok := f.last[ruleID]; ok {
 		return d, nil

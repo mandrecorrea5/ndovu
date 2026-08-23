@@ -79,6 +79,11 @@ func (s *FeedbackService) List(ctx context.Context, f domain.FeedbackFilter) ([]
 	return s.store.ListFeedbacks(ctx, f)
 }
 
+// Get resolve um feedback por id (ownership check no admin).
+func (s *FeedbackService) Get(ctx context.Context, id string) (domain.UserFeedback, error) {
+	return s.store.GetFeedback(ctx, id)
+}
+
 // SetStatus muda status; resolvedBy = user do backoffice que triageou.
 func (s *FeedbackService) SetStatus(ctx context.Context, id string, status domain.FeedbackStatus, resolvedBy string) (domain.UserFeedback, error) {
 	if !status.Valid() {

@@ -134,6 +134,7 @@ type UserStore interface {
 	GetUserByEmail(ctx context.Context, email string) (User, string, error) // user, hash
 	GetUserByID(ctx context.Context, id string) (User, error)
 	ListUsers(ctx context.Context) ([]User, error)
+	ListUsersByCompany(ctx context.Context, companyID string) ([]User, error)
 	UpdateUser(ctx context.Context, id string, role *Role, active *bool, name *string, companyID *string) (User, error)
 	SetPassword(ctx context.Context, id string, passwordHash string) error
 	CountActiveAdmins(ctx context.Context) (int, error)
@@ -143,15 +144,19 @@ type UserStore interface {
 type APIKeyStore interface {
 	CreateAPIKey(ctx context.Context, k APIKey, keyHash string, createdBy string) (APIKey, error)
 	ListAPIKeys(ctx context.Context) ([]APIKey, error)
+	ListAPIKeysByCompany(ctx context.Context, companyID string) ([]APIKey, error)
 	RevokeAPIKey(ctx context.Context, id string) error
 	FindActiveKeyByHash(ctx context.Context, keyHash string) (APIKey, error)
+	GetAPIKeyByID(ctx context.Context, id string) (APIKey, error)
 }
 
 // AppStore é o port de persistência de apps emissores (frontends cadastrados).
 type AppStore interface {
 	CreateApp(ctx context.Context, a App) (App, error)
 	GetApp(ctx context.Context, id string) (App, error)
+	GetAppByName(ctx context.Context, name string) (App, error)
 	ListApps(ctx context.Context) ([]App, error)
+	ListAppsByCompany(ctx context.Context, companyID string) ([]App, error)
 	UpdateApp(ctx context.Context, id string, a App) (App, error)
 	DeleteApp(ctx context.Context, id string) error
 	// ListAppNamesByCompany devolve os nomes dos apps de uma empresa —
@@ -230,6 +235,7 @@ type FeedbackFilter struct {
 // FeedbackStore persiste feedbacks.
 type FeedbackStore interface {
 	CreateFeedback(ctx context.Context, f UserFeedback) (UserFeedback, error)
+	GetFeedback(ctx context.Context, id string) (UserFeedback, error)
 	UpdateFeedbackStatus(ctx context.Context, id string, status FeedbackStatus, resolvedBy string) (UserFeedback, error)
 	ListFeedbacks(ctx context.Context, f FeedbackFilter) ([]UserFeedback, int, error)
 	DeleteFeedback(ctx context.Context, id string) error
@@ -304,6 +310,7 @@ type AnomalyDetection struct {
 // AnomalyStore persiste regras e histórico de detecções.
 type AnomalyStore interface {
 	CreateAnomalyRule(ctx context.Context, r AnomalyRule) (AnomalyRule, error)
+	GetAnomalyRule(ctx context.Context, id string) (AnomalyRule, error)
 	UpdateAnomalyRule(ctx context.Context, id string, r AnomalyRule) (AnomalyRule, error)
 	DeleteAnomalyRule(ctx context.Context, id string) error
 	ListAnomalyRules(ctx context.Context) ([]AnomalyRule, error)
@@ -363,6 +370,7 @@ type SamplingRule struct {
 // SamplingRuleStore persiste as regras e permite refresh in-memory no writer.
 type SamplingRuleStore interface {
 	CreateSamplingRule(ctx context.Context, r SamplingRule) (SamplingRule, error)
+	GetSamplingRule(ctx context.Context, id string) (SamplingRule, error)
 	UpdateSamplingRule(ctx context.Context, id string, r SamplingRule) (SamplingRule, error)
 	DeleteSamplingRule(ctx context.Context, id string) error
 	ListSamplingRules(ctx context.Context) ([]SamplingRule, error)
@@ -411,10 +419,13 @@ type AuditFilter struct {
 	Actor        string // user_id
 	Action       string
 	ResourceType string
-	From         *time.Time
-	To           *time.Time
-	Limit        int
-	Offset       int
+	// CompanyID restringe às entradas cujo actor pertence a essa company
+	// (usado para admin não-super ver só o audit da própria empresa).
+	CompanyID string
+	From      *time.Time
+	To        *time.Time
+	Limit     int
+	Offset    int
 }
 
 // AuditStore persiste eventos de auditoria (insert-only) e permite consulta
@@ -488,6 +499,7 @@ type SourceMap struct {
 // Upsert por chave permite reenvio do mesmo arquivo após rebuild.
 type SourceMapStore interface {
 	UpsertSourceMap(ctx context.Context, m SourceMap, content string) (SourceMap, error)
+	GetSourceMap(ctx context.Context, id string) (SourceMap, error)
 	ListSourceMaps(ctx context.Context, app, release string) ([]SourceMap, error)
 	GetSourceMapContent(ctx context.Context, app, release, filename string) (string, error)
 	DeleteSourceMap(ctx context.Context, id string) error
@@ -524,6 +536,7 @@ type AlertRule struct {
 // AlertRuleStore persiste regras de alerta e histórico de disparos.
 type AlertRuleStore interface {
 	CreateAlertRule(ctx context.Context, rule AlertRule) (AlertRule, error)
+	GetAlertRule(ctx context.Context, id string) (AlertRule, error)
 	ListAlertRules(ctx context.Context) ([]AlertRule, error)
 	DeleteAlertRule(ctx context.Context, id string) error
 	LastDeliveryAt(ctx context.Context, ruleID string) (time.Time, error)

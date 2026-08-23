@@ -241,6 +241,11 @@ func (s *SamplingService) List(ctx context.Context) ([]domain.SamplingRule, erro
 	return s.store.ListSamplingRules(ctx)
 }
 
+// Get resolve uma regra por id (ownership check no admin).
+func (s *SamplingService) Get(ctx context.Context, id string) (domain.SamplingRule, error) {
+	return s.store.GetSamplingRule(ctx, id)
+}
+
 func validateSampling(in SamplingInput) error {
 	if in.SampleRate < 0 || in.SampleRate > 1 {
 		return domain.NewValidationError("sampleRate deve estar em [0, 1]")

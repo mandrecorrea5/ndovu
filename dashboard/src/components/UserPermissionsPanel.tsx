@@ -7,13 +7,18 @@ import { api, ApiError, type App, type UserAppPermission } from '@/lib/api';
 
 /**
  * UserPermissionsPanel — gerencia RBAC granular por app dentro do drill de
- * um usuário. Faz sentido só para viewers: admin de company vê tudo da
- * company automaticamente (o back devolve isso via /auth/me + tenantScope).
+ * um usuário. Faz sentido para viewer e editor: se o usuário tem N apps
+ * concedidos, o backend restringe queries e mutações àqueles N apps;
+ * sem grants, cai no default útil de "todos os apps da company".
+ *
+ * Admin não usa: já vê tudo da company automaticamente via tenantScope.
  *
  * Regras exibidas ao usuário do backoffice:
  *   - Só apps ATIVOS DA MESMA COMPANY podem ser concedidos (o back valida
  *     também; aqui filtramos client-side pra evitar tentativas visíveis).
  *   - Grant é idempotente; DELETE remove.
+ *   - Sem grant nenhum = vê todos os apps da company (default útil,
+ *     compatível com onboarding sem burocracia).
  */
 export function UserPermissionsPanel({
   userId,
@@ -28,8 +33,9 @@ export function UserPermissionsPanel({
   const [selectedApp, setSelectedApp] = useState('');
   const [feedback, setFeedback] = useState('');
 
-  // Só faz sentido carregar para viewers — admins têm tudo por default.
-  const enabled = role === 'viewer';
+  // Viewer e editor podem ter grants explícitos. Admin não usa
+  // (vê tudo da company automaticamente).
+  const enabled = role === 'viewer' || role === 'editor';
 
   const perms = useQuery({
     queryKey: ['user-permissions', userId],
@@ -80,12 +86,14 @@ export function UserPermissionsPanel({
   return (
     <div className="space-y-2 rounded-md border border-hairline bg-plane/40 px-3 py-2">
       <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-        Apps que este viewer pode consultar
+        Apps concedidos a este {role}
       </p>
 
       {granted.length === 0 ? (
         <p className="text-xs text-muted">
-          Nenhum app concedido — este viewer não consegue ver nada até você adicionar.
+          Sem apps específicos concedidos — este {role} vê{' '}
+          <span className="font-semibold text-ink">todos os apps da empresa</span> (default útil).
+          Adicione um app abaixo para restringir o acesso.
         </p>
       ) : (
         <ul className="space-y-1">

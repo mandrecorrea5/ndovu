@@ -115,10 +115,14 @@ func NewRouter(h *Handlers, cfg config.Config, verifier domain.TokenVerifier, ke
 			})
 		})
 
-		// Admin — gestão de usuários, apps e chaves (role admin)
+		// Admin — gestão de usuários, apps e chaves (role admin).
+		// tenantScope também roda aqui: super-admin fica com scope=nil (vê
+		// tudo); admin não-super fica com scope = apps da própria company,
+		// e as listagens usam esse scope para filtrar por app.
 		r.Route("/admin", func(r chi.Router) {
 			r.Use(bearerAuth(verifier))
 			r.Use(requireRole(domain.RoleAdmin))
+			r.Use(tenantScope(apps, perms, logger))
 			r.Get("/users", h.GetUsers)
 			r.Post("/users", h.PostUsers)
 			r.Patch("/users/{id}", h.PatchUser)

@@ -22,6 +22,14 @@ func (f *fakeSamplingStore) UpdateSamplingRule(context.Context, string, domain.S
 	return domain.SamplingRule{}, nil
 }
 func (f *fakeSamplingStore) DeleteSamplingRule(context.Context, string) error { return nil }
+func (f *fakeSamplingStore) GetSamplingRule(_ context.Context, id string) (domain.SamplingRule, error) {
+	for _, r := range f.rules {
+		if r.ID == id {
+			return r, nil
+		}
+	}
+	return domain.SamplingRule{}, domain.ErrNotFound
+}
 
 func newSamplingSvc(rules ...domain.SamplingRule) *SamplingService {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))

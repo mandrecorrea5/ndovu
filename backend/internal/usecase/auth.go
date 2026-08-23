@@ -173,9 +173,21 @@ func (s *AuthService) CreateUser(ctx context.Context, in CreateUserInput) (domai
 	}, string(hash))
 }
 
-// ListUsers lista as contas.
+// ListUsers lista as contas (visão global — usar só para super-admin).
 func (s *AuthService) ListUsers(ctx context.Context) ([]domain.User, error) {
 	return s.users.ListUsers(ctx)
+}
+
+// ListUsersByCompany lista contas de uma company específica — usar para
+// admin não-super evitar vazamento cross-tenant.
+func (s *AuthService) ListUsersByCompany(ctx context.Context, companyID string) ([]domain.User, error) {
+	return s.users.ListUsersByCompany(ctx, companyID)
+}
+
+// GetUserByID expõe o lookup direto ao handler admin (usado para checar
+// ownership em PATCH/DELETE antes de mutar).
+func (s *AuthService) GetUserByID(ctx context.Context, id string) (domain.User, error) {
+	return s.users.GetUserByID(ctx, id)
 }
 
 // UpdateUserInput são os campos alteráveis de uma conta.

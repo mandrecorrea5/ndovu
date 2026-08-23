@@ -733,7 +733,7 @@ func (h *Handlers) PostFeedback(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, fb)
 }
 
-// GetFeedbacks lista os feedbacks paginados (admin).
+// GetFeedbacks lista os feedbacks paginados (admin) — filtrado por scope.
 func (h *Handlers) GetFeedbacks(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	list, total, err := h.feedback.List(r.Context(), domain.FeedbackFilter{
@@ -746,6 +746,10 @@ func (h *Handlers) GetFeedbacks(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, r, err)
 		return
 	}
+	if scope, _ := AppScopeFrom(r.Context()); scope != nil {
+		list = filterByAppScope(list, scope, func(f domain.UserFeedback) string { return f.App })
+		total = len(list)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"feedbacks": list, "total": total})
 }
 
@@ -753,15 +757,23 @@ type patchFeedbackRequest struct {
 	Status string `json:"status"`
 }
 
-// PatchFeedback altera o status (new → triaging → resolved/dismissed).
+// PatchFeedback altera o status — bloqueia se app está fora do scope.
 func (h *Handlers) PatchFeedback(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	cur, err := h.feedback.Get(r.Context(), id)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	if h.enforceAppInScope(w, r, cur.App) {
+		return
+	}
 	var req patchFeedbackRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "JSON inválido"})
 		return
 	}
 	identity, _ := IdentityFrom(r.Context())
-	id := chi.URLParam(r, "id")
 	fb, err := h.feedback.SetStatus(r.Context(), id, domain.FeedbackStatus(req.Status), identity.UserID)
 	if err != nil {
 		h.writeError(w, r, err)
@@ -771,9 +783,17 @@ func (h *Handlers) PatchFeedback(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, fb)
 }
 
-// DeleteFeedback remove um feedback (útil para spam).
+// DeleteFeedback remove um feedback (útil para spam) — bloqueia cross-app.
 func (h *Handlers) DeleteFeedback(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	cur, err := h.feedback.Get(r.Context(), id)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	if h.enforceAppInScope(w, r, cur.App) {
+		return
+	}
 	if err := h.feedback.Delete(r.Context(), id); err != nil {
 		h.writeError(w, r, err)
 		return
@@ -819,6 +839,8 @@ func (h *Handlers) GetAnomalyRules(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, r, err)
 		return
 	}
+	scope, _ := AppScopeFrom(r.Context())
+	list = filterByAppScope(list, scope, func(a domain.AnomalyRule) string { return a.App })
 	writeJSON(w, http.StatusOK, map[string]any{"rules": list})
 }
 
@@ -826,6 +848,9 @@ func (h *Handlers) PostAnomalyRule(w http.ResponseWriter, r *http.Request) {
 	var req anomalyRuleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "JSON inválido"})
+		return
+	}
+	if h.enforceAppInScope(w, r, req.App) {
 		return
 	}
 	created, err := h.anomalies.Create(r.Context(), req.toInput())
@@ -838,12 +863,24 @@ func (h *Handlers) PostAnomalyRule(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) PatchAnomalyRule(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	cur, err := h.anomalies.Get(r.Context(), id)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	if h.enforceAppInScope(w, r, cur.App) {
+		return
+	}
 	var req anomalyRuleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "JSON inválido"})
 		return
 	}
-	id := chi.URLParam(r, "id")
+	// Não pode mover a regra pra outro app fora do scope.
+	if h.enforceAppInScope(w, r, req.App) {
+		return
+	}
 	updated, err := h.anomalies.Update(r.Context(), id, req.toInput())
 	if err != nil {
 		h.writeError(w, r, err)
@@ -855,6 +892,14 @@ func (h *Handlers) PatchAnomalyRule(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) DeleteAnomalyRule(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	cur, err := h.anomalies.Get(r.Context(), id)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	if h.enforceAppInScope(w, r, cur.App) {
+		return
+	}
 	if err := h.anomalies.Delete(r.Context(), id); err != nil {
 		h.writeError(w, r, err)
 		return
@@ -863,6 +908,9 @@ func (h *Handlers) DeleteAnomalyRule(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
+// GetAnomalyDetections lista histórico — pra filtrar por company, carrega
+// todas as regras uma vez e joga fora detections cujo rule_id pertence a
+// app fora do scope. Não é lookup por request (regras ficam em memória).
 func (h *Handlers) GetAnomalyDetections(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	list, total, err := h.anomalies.Detections(r.Context(),
@@ -871,6 +919,15 @@ func (h *Handlers) GetAnomalyDetections(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		h.writeError(w, r, err)
 		return
+	}
+	if scope, _ := AppScopeFrom(r.Context()); scope != nil {
+		rules, _ := h.anomalies.List(r.Context())
+		ruleApp := make(map[string]string, len(rules))
+		for _, ru := range rules {
+			ruleApp[ru.ID] = ru.App
+		}
+		list = filterByAppScope(list, scope, func(d domain.AnomalyDetection) string { return ruleApp[d.RuleID] })
+		total = len(list)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"detections": list, "total": total})
 }
@@ -984,6 +1041,8 @@ func (h *Handlers) GetSamplingRules(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, r, err)
 		return
 	}
+	scope, _ := AppScopeFrom(r.Context())
+	list = filterByAppScope(list, scope, func(s domain.SamplingRule) string { return s.App })
 	writeJSON(w, http.StatusOK, map[string]any{"rules": list})
 }
 
@@ -991,6 +1050,9 @@ func (h *Handlers) PostSamplingRule(w http.ResponseWriter, r *http.Request) {
 	var req samplingRuleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "JSON inválido"})
+		return
+	}
+	if h.enforceAppInScope(w, r, req.App) {
 		return
 	}
 	created, err := h.sampling.Create(r.Context(), usecase.SamplingInput{
@@ -1006,12 +1068,23 @@ func (h *Handlers) PostSamplingRule(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) PatchSamplingRule(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	cur, err := h.sampling.Get(r.Context(), id)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	if h.enforceAppInScope(w, r, cur.App) {
+		return
+	}
 	var req samplingRuleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "JSON inválido"})
 		return
 	}
-	id := chi.URLParam(r, "id")
+	if h.enforceAppInScope(w, r, req.App) {
+		return
+	}
 	updated, err := h.sampling.Update(r.Context(), id, usecase.SamplingInput{
 		App: req.App, EventType: req.EventType, SampleRate: req.SampleRate,
 		KeepErrors: req.KeepErrors, Active: req.Active, Note: req.Note,
@@ -1026,6 +1099,14 @@ func (h *Handlers) PatchSamplingRule(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) DeleteSamplingRule(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	cur, err := h.sampling.Get(r.Context(), id)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	if h.enforceAppInScope(w, r, cur.App) {
+		return
+	}
 	if err := h.sampling.Delete(r.Context(), id); err != nil {
 		h.writeError(w, r, err)
 		return
@@ -1047,6 +1128,15 @@ type grantPermissionRequest struct {
 // própria company. Esta rota é útil principalmente para viewers.
 func (h *Handlers) GetUserPermissions(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "id")
+	// Bloqueia se o user alvo não é da company do actor.
+	target, err := h.auth.GetUserByID(r.Context(), userID)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	if h.enforceOwnership(w, r, target.CompanyID) {
+		return
+	}
 	list, err := h.permissions.ListForUser(r.Context(), userID)
 	if err != nil {
 		h.writeError(w, r, err)
@@ -1056,9 +1146,26 @@ func (h *Handlers) GetUserPermissions(w http.ResponseWriter, r *http.Request) {
 }
 
 // PutUserPermission concede acesso do user ao app (idempotente).
+// Ownership: user alvo E app alvo devem ser da company do actor.
 func (h *Handlers) PutUserPermission(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "id")
 	appID := chi.URLParam(r, "appId")
+	target, err := h.auth.GetUserByID(r.Context(), userID)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	if h.enforceOwnership(w, r, target.CompanyID) {
+		return
+	}
+	app, err := h.apps.Get(r.Context(), appID)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	if h.enforceOwnership(w, r, app.CompanyID) {
+		return
+	}
 	var req grantPermissionRequest
 	// body é opcional — se vazio, cai em "viewer" no service.
 	_ = json.NewDecoder(r.Body).Decode(&req)
@@ -1073,10 +1180,18 @@ func (h *Handlers) PutUserPermission(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, p)
 }
 
-// DeleteUserPermission revoga o acesso.
+// DeleteUserPermission revoga o acesso — mesmo ownership check do PUT.
 func (h *Handlers) DeleteUserPermission(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "id")
 	appID := chi.URLParam(r, "appId")
+	target, err := h.auth.GetUserByID(r.Context(), userID)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	if h.enforceOwnership(w, r, target.CompanyID) {
+		return
+	}
 	if err := h.permissions.Revoke(r.Context(), userID, appID); err != nil {
 		h.writeError(w, r, err)
 		return
@@ -1091,7 +1206,18 @@ func (h *Handlers) DeleteUserPermission(w http.ResponseWriter, r *http.Request) 
 
 // GetGDPRExport devolve todos os eventos de um user como download JSON.
 // Content-Disposition attachment para o browser salvar como arquivo.
+// LIMITAÇÃO ATUAL: só super-admin pode operar. O userId pode ter eventos em
+// apps de múltiplas companies e o método atual não filtra por scope — para
+// evitar vazamento cross-tenant, admin não-super recebe 403. Evolução:
+// passar AppScope para o GDPRService e filtrar WHERE user_id AND app IN (scope).
 func (h *Handlers) GetGDPRExport(w http.ResponseWriter, r *http.Request) {
+	identity, _ := IdentityFrom(r.Context())
+	if !identity.IsSuper {
+		writeJSON(w, http.StatusForbidden, errorResponse{
+			Error: "operação LGPD requer super-admin — admin de company não pode operar em user_id que pode existir em múltiplas empresas",
+		})
+		return
+	}
 	userID := chi.URLParam(r, "userId")
 	events, err := h.gdpr.Export(r.Context(), userID)
 	if err != nil {
@@ -1112,7 +1238,15 @@ func (h *Handlers) GetGDPRExport(w http.ResponseWriter, r *http.Request) {
 
 // DeleteGDPRUser dispara o "esquecer usuário" (async no ClickHouse).
 // Retorna 202 Accepted — o registro do pedido fica no audit log.
+// Ver LIMITAÇÃO em GetGDPRExport: só super-admin por enquanto.
 func (h *Handlers) DeleteGDPRUser(w http.ResponseWriter, r *http.Request) {
+	identity, _ := IdentityFrom(r.Context())
+	if !identity.IsSuper {
+		writeJSON(w, http.StatusForbidden, errorResponse{
+			Error: "operação LGPD requer super-admin — admin de company não pode operar em user_id que pode existir em múltiplas empresas",
+		})
+		return
+	}
 	userID := chi.URLParam(r, "userId")
 	if err := h.gdpr.Forget(r.Context(), userID); err != nil {
 		h.writeError(w, r, err)
@@ -1130,13 +1264,20 @@ func (h *Handlers) DeleteGDPRUser(w http.ResponseWriter, r *http.Request) {
 // Audit log (admin)
 // ---------------------------------------------------------------------------
 
-// GetAuditLog lista as entradas de audit paginadas.
+// GetAuditLog lista as entradas de audit paginadas — filtra por company do
+// actor quando não-super (evita vazamento cross-tenant de auditoria).
 func (h *Handlers) GetAuditLog(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	identity, _ := IdentityFrom(r.Context())
+	companyFilter := ""
+	if !identity.IsSuper {
+		companyFilter = identity.CompanyID
+	}
 	f := domain.AuditFilter{
 		Actor:        q.Get("actor"),
 		Action:       q.Get("action"),
 		ResourceType: q.Get("resourceType"),
+		CompanyID:    companyFilter,
 		Limit:        parseIntDefault(q.Get("limit"), 50),
 		Offset:       parseIntDefault(q.Get("offset"), 0),
 	}
@@ -1188,7 +1329,7 @@ type uploadSourceMapRequest struct {
 	Content  string `json:"content"`
 }
 
-// GetSourceMaps lista os source maps (metadata). Filtro opcional por app/release.
+// GetSourceMaps lista os source maps (metadata) — filtrado por scope.
 func (h *Handlers) GetSourceMaps(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	list, err := h.sourceMaps.List(r.Context(), q.Get("app"), q.Get("release"))
@@ -1196,15 +1337,21 @@ func (h *Handlers) GetSourceMaps(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, r, err)
 		return
 	}
+	scope, _ := AppScopeFrom(r.Context())
+	list = filterByAppScope(list, scope, func(m domain.SourceMap) string { return m.App })
 	writeJSON(w, http.StatusOK, map[string]any{"sourceMaps": list})
 }
 
 // PostSourceMaps recebe upload como JSON simples ({"app","release","filename","content"}).
 // Content é o texto do .map (JSON); reenvio sobrescreve por (app,release,filename).
+// Bloqueia upload em app fora do scope do actor.
 func (h *Handlers) PostSourceMaps(w http.ResponseWriter, r *http.Request) {
 	var req uploadSourceMapRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "JSON inválido"})
+		return
+	}
+	if h.enforceAppInScope(w, r, req.App) {
 		return
 	}
 	identity, _ := IdentityFrom(r.Context())
@@ -1225,9 +1372,17 @@ func (h *Handlers) PostSourceMaps(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, m)
 }
 
-// DeleteSourceMap remove um source map por id.
+// DeleteSourceMap remove um source map por id — bloqueia se app não é do actor.
 func (h *Handlers) DeleteSourceMap(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	cur, err := h.sourceMaps.Get(r.Context(), id)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	if h.enforceAppInScope(w, r, cur.App) {
+		return
+	}
 	if err := h.sourceMaps.Delete(r.Context(), id); err != nil {
 		h.writeError(w, r, err)
 		return
@@ -1289,21 +1444,26 @@ type createAlertRequest struct {
 	Active         bool   `json:"active"`
 }
 
-// GetAlerts lista as regras de alerta.
+// GetAlerts lista as regras de alerta — filtrado por scope de apps do actor.
 func (h *Handlers) GetAlerts(w http.ResponseWriter, r *http.Request) {
 	rules, err := h.alerts.List(r.Context())
 	if err != nil {
 		h.writeError(w, r, err)
 		return
 	}
+	scope, _ := AppScopeFrom(r.Context())
+	rules = filterByAppScope(rules, scope, func(a domain.AlertRule) string { return a.App })
 	writeJSON(w, http.StatusOK, map[string]any{"alerts": rules})
 }
 
-// PostAlerts cria uma regra de alerta.
+// PostAlerts cria uma regra de alerta — valida que o app é do actor.
 func (h *Handlers) PostAlerts(w http.ResponseWriter, r *http.Request) {
 	var req createAlertRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "JSON inválido"})
+		return
+	}
+	if h.enforceAppInScope(w, r, req.App) {
 		return
 	}
 	rule := domain.AlertRule{
@@ -1328,9 +1488,17 @@ func (h *Handlers) PostAlerts(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, created)
 }
 
-// DeleteAlert remove uma regra de alerta.
+// DeleteAlert remove uma regra — bloqueia se o app é de outra company.
 func (h *Handlers) DeleteAlert(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	cur, err := h.alerts.Get(r.Context(), id)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	if h.enforceAppInScope(w, r, cur.App) {
+		return
+	}
 	if err := h.alerts.Delete(r.Context(), id); err != nil {
 		h.writeError(w, r, err)
 		return

@@ -202,11 +202,38 @@ func (r *Repository) GetUserByID(ctx context.Context, id string) (domain.User, e
 }
 
 // ListUsers lista todos os usuários com o nome da empresa resolvido.
+// Cross-company: use só para super-admin. Admin normal deve chamar
+// ListUsersByCompany para não vazar dados de outras companies.
 func (r *Repository) ListUsers(ctx context.Context) ([]domain.User, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT `+userSelect+` FROM users u JOIN companies c ON c.id = u.company_id ORDER BY u.created_at`)
 	if err != nil {
 		return nil, fmt.Errorf("listando usuários: %w", err)
+	}
+	defer rows.Close()
+	users := []domain.User{}
+	for rows.Next() {
+		var u domain.User
+		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.Role, &u.Active, &u.IsSuper,
+			&u.CompanyID, &u.Company, &u.CreatedAt, &u.UpdatedAt); err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+	return users, rows.Err()
+}
+
+// ListUsersByCompany lista apenas usuários pertencentes a uma company —
+// usado pelos handlers admin para isolar cross-tenant.
+func (r *Repository) ListUsersByCompany(ctx context.Context, companyID string) ([]domain.User, error) {
+	if companyID == "" {
+		return []domain.User{}, nil
+	}
+	rows, err := r.pool.Query(ctx,
+		`SELECT `+userSelect+` FROM users u JOIN companies c ON c.id = u.company_id
+		 WHERE u.company_id = $1::uuid ORDER BY u.created_at`, companyID)
+	if err != nil {
+		return nil, fmt.Errorf("listando usuários por company: %w", err)
 	}
 	defer rows.Close()
 	users := []domain.User{}
@@ -294,11 +321,41 @@ func (r *Repository) CreateAPIKey(ctx context.Context, k domain.APIKey, keyHash 
 	return k, nil
 }
 
-// ListAPIKeys lista todas as chaves (sem hash).
+// ListAPIKeys lista todas as chaves (sem hash). Cross-company: use só para
+// super-admin. Admin normal deve chamar ListAPIKeysByCompany.
 func (r *Repository) ListAPIKeys(ctx context.Context) ([]domain.APIKey, error) {
 	rows, err := r.pool.Query(ctx, `SELECT `+keyColumns+` FROM api_keys ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("listando chaves: %w", err)
+	}
+	defer rows.Close()
+	keys := []domain.APIKey{}
+	for rows.Next() {
+		var k domain.APIKey
+		if err := rows.Scan(&k.ID, &k.AppID, &k.App, &k.Label, &k.Prefix, &k.Active, &k.CreatedAt, &k.RevokedAt); err != nil {
+			return nil, err
+		}
+		keys = append(keys, k)
+	}
+	return keys, rows.Err()
+}
+
+// ListAPIKeysByCompany filtra chaves cuja app pertence à company informada.
+// Chaves antigas sem app_id (legado) não aparecem — o cadastro atual sempre
+// vincula app+key, então o filtro é seguro.
+func (r *Repository) ListAPIKeysByCompany(ctx context.Context, companyID string) ([]domain.APIKey, error) {
+	if companyID == "" {
+		return []domain.APIKey{}, nil
+	}
+	rows, err := r.pool.Query(ctx, `
+		SELECT k.id, COALESCE(k.app_id::text, '') AS app_id, k.app, k.label, k.key_prefix,
+		       k.active, k.created_at, k.revoked_at
+		FROM api_keys k
+		JOIN apps a ON a.id = k.app_id
+		WHERE a.company_id = $1::uuid
+		ORDER BY k.created_at DESC`, companyID)
+	if err != nil {
+		return nil, fmt.Errorf("listando chaves por company: %w", err)
 	}
 	defer rows.Close()
 	keys := []domain.APIKey{}
@@ -330,6 +387,22 @@ func (r *Repository) FindActiveKeyByHash(ctx context.Context, keyHash string) (d
 	var k domain.APIKey
 	err := r.pool.QueryRow(ctx,
 		`SELECT `+keyColumns+` FROM api_keys WHERE key_hash = $1 AND active`, keyHash).
+		Scan(&k.ID, &k.AppID, &k.App, &k.Label, &k.Prefix, &k.Active, &k.CreatedAt, &k.RevokedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.APIKey{}, domain.ErrNotFound
+	}
+	if err != nil {
+		return domain.APIKey{}, fmt.Errorf("consultando chave: %w", err)
+	}
+	return k, nil
+}
+
+// GetAPIKeyByID resolve uma chave por id (sem hash). Usado pelo handler
+// de revogação para checar ownership da company antes de mutar.
+func (r *Repository) GetAPIKeyByID(ctx context.Context, id string) (domain.APIKey, error) {
+	var k domain.APIKey
+	err := r.pool.QueryRow(ctx,
+		`SELECT `+keyColumns+` FROM api_keys WHERE id = $1`, id).
 		Scan(&k.ID, &k.AppID, &k.App, &k.Label, &k.Prefix, &k.Active, &k.CreatedAt, &k.RevokedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.APIKey{}, domain.ErrNotFound
@@ -389,12 +462,53 @@ func (r *Repository) GetApp(ctx context.Context, id string) (domain.App, error) 
 	return a, nil
 }
 
-// ListApps lista todos os apps cadastrados.
+// GetAppByName resolve um app pelo campo `name` (usado no ownership check
+// de chaves de API, cuja request só carrega o nome do app).
+func (r *Repository) GetAppByName(ctx context.Context, name string) (domain.App, error) {
+	var a domain.App
+	err := r.pool.QueryRow(ctx,
+		`SELECT `+appSelect+` FROM apps a LEFT JOIN companies c ON c.id = a.company_id WHERE a.name = $1`, name).
+		Scan(&a.ID, &a.Name, &a.Technology, &a.CompanyID, &a.Company, &a.Responsible, &a.CreatedAt, &a.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.App{}, domain.ErrNotFound
+	}
+	if err != nil {
+		return domain.App{}, fmt.Errorf("consultando app por nome: %w", err)
+	}
+	return a, nil
+}
+
+// ListApps lista todos os apps cadastrados. Cross-company: use só para
+// super-admin. Admin normal deve chamar ListAppsByCompany.
 func (r *Repository) ListApps(ctx context.Context) ([]domain.App, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT `+appSelect+` FROM apps a LEFT JOIN companies c ON c.id = a.company_id ORDER BY a.name`)
 	if err != nil {
 		return nil, fmt.Errorf("listando apps: %w", err)
+	}
+	defer rows.Close()
+	apps := []domain.App{}
+	for rows.Next() {
+		var a domain.App
+		if err := rows.Scan(&a.ID, &a.Name, &a.Technology, &a.CompanyID, &a.Company,
+			&a.Responsible, &a.CreatedAt, &a.UpdatedAt); err != nil {
+			return nil, err
+		}
+		apps = append(apps, a)
+	}
+	return apps, rows.Err()
+}
+
+// ListAppsByCompany filtra apps por company (para isolamento no admin).
+func (r *Repository) ListAppsByCompany(ctx context.Context, companyID string) ([]domain.App, error) {
+	if companyID == "" {
+		return []domain.App{}, nil
+	}
+	rows, err := r.pool.Query(ctx,
+		`SELECT `+appSelect+` FROM apps a LEFT JOIN companies c ON c.id = a.company_id
+		 WHERE a.company_id = $1::uuid ORDER BY a.name`, companyID)
+	if err != nil {
+		return nil, fmt.Errorf("listando apps por company: %w", err)
 	}
 	defer rows.Close()
 	apps := []domain.App{}
@@ -760,6 +874,23 @@ func (r *Repository) CreateAlertRule(ctx context.Context, rule domain.AlertRule)
 	return rule, nil
 }
 
+// GetAlertRule resolve uma regra por id (usado no ownership check).
+func (r *Repository) GetAlertRule(ctx context.Context, id string) (domain.AlertRule, error) {
+	var a domain.AlertRule
+	err := r.pool.QueryRow(ctx,
+		`SELECT `+alertColumns+` FROM alert_rules WHERE id = $1`, id).
+		Scan(&a.ID, &a.Name, &a.App, &a.ErrorCode, &a.Threshold,
+			&a.WindowSeconds, &a.Channel, &a.TargetURL, &a.SilenceSeconds,
+			&a.Active, &a.CreatedAt, &a.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.AlertRule{}, domain.ErrNotFound
+	}
+	if err != nil {
+		return domain.AlertRule{}, fmt.Errorf("consultando alerta: %w", err)
+	}
+	return a, nil
+}
+
 // ListAlertRules lista todas as regras (ativas e inativas).
 func (r *Repository) ListAlertRules(ctx context.Context) ([]domain.AlertRule, error) {
 	rows, err := r.pool.Query(ctx, `SELECT `+alertColumns+` FROM alert_rules ORDER BY name`)
@@ -876,6 +1007,23 @@ func (r *Repository) UpdateFeedbackStatus(ctx context.Context, id string, status
 	return f, nil
 }
 
+// GetFeedback resolve um feedback por id (usado no ownership check).
+func (r *Repository) GetFeedback(ctx context.Context, id string) (domain.UserFeedback, error) {
+	var fb domain.UserFeedback
+	err := r.pool.QueryRow(ctx,
+		`SELECT `+feedbackCols+` FROM user_feedbacks WHERE id = $1`, id).
+		Scan(&fb.ID, &fb.App, &fb.SessionID, &fb.EventID, &fb.UserID,
+			&fb.Type, &fb.Message, &fb.Email, &fb.URL, &fb.ViewportW, &fb.ViewportH,
+			&fb.Status, &fb.ResolvedBy, &fb.ResolvedAt, &fb.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.UserFeedback{}, domain.ErrNotFound
+	}
+	if err != nil {
+		return domain.UserFeedback{}, fmt.Errorf("consultando feedback: %w", err)
+	}
+	return fb, nil
+}
+
 // ListFeedbacks devolve página + total (para paginação).
 func (r *Repository) ListFeedbacks(ctx context.Context, f domain.FeedbackFilter) ([]domain.UserFeedback, int, error) {
 	limit := f.Limit
@@ -964,6 +1112,23 @@ func (r *Repository) CreateAnomalyRule(ctx context.Context, rule domain.AnomalyR
 		return domain.AnomalyRule{}, fmt.Errorf("criando anomaly rule: %w", err)
 	}
 	return rule, nil
+}
+
+// GetAnomalyRule resolve uma regra por id (usado no ownership check).
+func (r *Repository) GetAnomalyRule(ctx context.Context, id string) (domain.AnomalyRule, error) {
+	var a domain.AnomalyRule
+	err := r.pool.QueryRow(ctx,
+		`SELECT `+anomalyCols+` FROM anomaly_rules WHERE id = $1`, id).
+		Scan(&a.ID, &a.Name, &a.App, &a.Metric, &a.WindowMinutes,
+			&a.BaselineWeeks, &a.Sensitivity, &a.Direction, &a.SilenceSeconds,
+			&a.Channel, &a.TargetURL, &a.Active, &a.CreatedAt, &a.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.AnomalyRule{}, domain.ErrNotFound
+	}
+	if err != nil {
+		return domain.AnomalyRule{}, fmt.Errorf("consultando anomaly rule: %w", err)
+	}
+	return a, nil
 }
 
 func (r *Repository) UpdateAnomalyRule(ctx context.Context, id string, rule domain.AnomalyRule) (domain.AnomalyRule, error) {
@@ -1147,6 +1312,22 @@ func (r *Repository) CreateSamplingRule(ctx context.Context, rule domain.Samplin
 	}
 	if err != nil {
 		return domain.SamplingRule{}, fmt.Errorf("criando sampling rule: %w", err)
+	}
+	return rule, nil
+}
+
+// GetSamplingRule resolve uma regra por id (usado no ownership check).
+func (r *Repository) GetSamplingRule(ctx context.Context, id string) (domain.SamplingRule, error) {
+	var rule domain.SamplingRule
+	err := r.pool.QueryRow(ctx,
+		`SELECT `+samplingCols+` FROM sampling_rules WHERE id = $1`, id).
+		Scan(&rule.ID, &rule.App, &rule.EventType, &rule.SampleRate, &rule.KeepErrors,
+			&rule.Active, &rule.Note, &rule.CreatedAt, &rule.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.SamplingRule{}, domain.ErrNotFound
+	}
+	if err != nil {
+		return domain.SamplingRule{}, fmt.Errorf("consultando sampling rule: %w", err)
 	}
 	return rule, nil
 }
@@ -1336,35 +1517,39 @@ func (r *Repository) ListAudit(ctx context.Context, f domain.AuditFilter) ([]dom
 		where = append(where, fmt.Sprintf(clause, len(args)))
 	}
 	if f.Actor != "" {
-		add("actor_user_id = $%d::uuid", f.Actor)
+		add("a.actor_user_id = $%d::uuid", f.Actor)
 	}
 	if f.Action != "" {
-		add("action = $%d", f.Action)
+		add("a.action = $%d", f.Action)
 	}
 	if f.ResourceType != "" {
-		add("resource_type = $%d", f.ResourceType)
+		add("a.resource_type = $%d", f.ResourceType)
 	}
 	if f.From != nil {
-		add("created_at >= $%d", *f.From)
+		add("a.created_at >= $%d", *f.From)
 	}
 	if f.To != nil {
-		add("created_at < $%d", *f.To)
+		add("a.created_at < $%d", *f.To)
+	}
+	// Filtro por company do actor (usa JOIN opcional em users).
+	if f.CompanyID != "" {
+		add("EXISTS (SELECT 1 FROM users u WHERE u.id = a.actor_user_id AND u.company_id = $%d::uuid)", f.CompanyID)
 	}
 
 	whereSQL := strings.Join(where, " AND ")
 
 	var total int
 	if err := r.pool.QueryRow(ctx,
-		"SELECT count(*) FROM audit_log WHERE "+whereSQL, args...).Scan(&total); err != nil {
+		"SELECT count(*) FROM audit_log a WHERE "+whereSQL, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("contando audit: %w", err)
 	}
 
 	args = append(args, limit, f.Offset)
 	rows, err := r.pool.Query(ctx, fmt.Sprintf(`
-		SELECT id, COALESCE(actor_user_id::text, ''), actor_email, action, resource_type,
-		       resource_id, details, ip, user_agent, created_at
-		FROM audit_log WHERE %s
-		ORDER BY created_at DESC
+		SELECT a.id, COALESCE(a.actor_user_id::text, ''), a.actor_email, a.action, a.resource_type,
+		       a.resource_id, a.details, a.ip, a.user_agent, a.created_at
+		FROM audit_log a WHERE %s
+		ORDER BY a.created_at DESC
 		LIMIT $%d OFFSET $%d`, whereSQL, len(args)-1, len(args)), args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("consultando audit: %w", err)
@@ -1607,6 +1792,21 @@ func (r *Repository) UpsertSourceMap(ctx context.Context, m domain.SourceMap, co
 		Scan(&m.ID, &m.App, &m.Release, &m.Filename, &m.SizeBytes, &m.UploadedBy, &m.UploadedAt)
 	if err != nil {
 		return domain.SourceMap{}, fmt.Errorf("upsert source map: %w", err)
+	}
+	return m, nil
+}
+
+// GetSourceMap resolve um source map por id (usado no ownership check).
+func (r *Repository) GetSourceMap(ctx context.Context, id string) (domain.SourceMap, error) {
+	var m domain.SourceMap
+	err := r.pool.QueryRow(ctx,
+		`SELECT `+sourceMapColumns+` FROM source_maps WHERE id = $1`, id).
+		Scan(&m.ID, &m.App, &m.Release, &m.Filename, &m.SizeBytes, &m.UploadedBy, &m.UploadedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return domain.SourceMap{}, domain.ErrNotFound
+	}
+	if err != nil {
+		return domain.SourceMap{}, fmt.Errorf("consultando source map: %w", err)
 	}
 	return m, nil
 }

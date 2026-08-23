@@ -64,6 +64,11 @@ func (s *AlertService) List(ctx context.Context) ([]domain.AlertRule, error) {
 	return s.rules.ListAlertRules(ctx)
 }
 
+// Get resolve uma regra por id (usado no ownership check antes de deletar).
+func (s *AlertService) Get(ctx context.Context, id string) (domain.AlertRule, error) {
+	return s.rules.GetAlertRule(ctx, id)
+}
+
 // Delete remove uma regra.
 func (s *AlertService) Delete(ctx context.Context, id string) error {
 	return s.rules.DeleteAlertRule(ctx, id)

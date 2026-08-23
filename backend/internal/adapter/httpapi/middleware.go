@@ -102,14 +102,16 @@ func bearerAuth(verifier domain.TokenVerifier) func(http.Handler) http.Handler {
 }
 
 // tenantScope injeta a whitelist de apps que o user autenticado pode consultar.
-// Regras (Sprint E.3 + E.4):
-//   - super-admin: sem escopo (nil = ver tudo).
-//   - admin de company: todos os apps da própria company.
-//   - viewer: SÓ os apps com permission explícita em user_app_permissions.
+// Regras:
+//   - super-admin: sem escopo (nil = ver tudo, cross-company).
+//   - admin de company: SEMPRE todos os apps da própria company.
+//   - editor/viewer: se tem grant explícito em user_app_permissions,
+//     restringe àqueles N apps; sem grant, vê todos os apps da company
+//     (default útil para onboarding — admin depois restringe se quiser).
 //
-// Se resulta em zero apps, injetamos uma sentinela impossível — as queries
-// devolvem zero resultados sem precisar de branch especial no repo.
-// Usar SEMPRE depois de bearerAuth.
+// Se resulta em zero apps (ex.: company sem apps cadastrados), injetamos
+// uma sentinela impossível — queries devolvem zero resultados sem precisar
+// de branch especial no repo. Usar SEMPRE depois de bearerAuth.
 func tenantScope(apps domain.AppStore, perms domain.UserAppPermissionStore, logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -129,11 +131,17 @@ func tenantScope(apps domain.AppStore, perms domain.UserAppPermissionStore, logg
 			)
 			switch identity.Role {
 			case domain.RoleAdmin:
-				// Admin de company vê tudo da company.
 				names, err = apps.ListAppNamesByCompany(r.Context(), identity.CompanyID)
-			default:
-				// Viewer (ou qualquer role futura sem defaults) precisa de grant explícito.
+			case domain.RoleEditor, domain.RoleViewer:
+				// Tenta grant explícito primeiro. Se não houver, cai pro
+				// default útil: todos os apps da company.
 				names, err = perms.ListAppNamesForUser(r.Context(), identity.UserID)
+				if err == nil && len(names) == 0 {
+					names, err = apps.ListAppNamesByCompany(r.Context(), identity.CompanyID)
+				}
+			default:
+				// Role futura sem tratamento explícito: nega por segurança.
+				names = nil
 			}
 			if err != nil {
 				logger.WarnContext(r.Context(), "escopo de tenant falhou — negando queries", "err", err)
