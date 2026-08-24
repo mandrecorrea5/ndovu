@@ -27,7 +27,7 @@ Frontends ──contrato v1──▶ API (Go) ──▶ NATS JetStream ──▶
 
 A ingestão **nunca espera o banco** e nada se perde se o ClickHouse cair — as
 mensagens ficam no stream e o writer drena depois. Detalhes e garantias de
-entrega: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+entrega: [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md).
 
 ## Subindo tudo (Docker Compose)
 
@@ -116,7 +116,7 @@ acessos e redefinem senhas — sempre existe ao menos um admin ativo. Em
 **Chaves de API**, admins geram uma chave por app emissor (exibida em claro só
 na criação; armazenada como hash) e revogam com efeito imediato na ingestão.
 A verificação de token fica atrás de um port — plugar Keycloak/OIDC depois é
-escrever um adapter, sem tocar no resto (ver docs/ARCHITECTURE.md).
+escrever um adapter, sem tocar no resto (ver `docs/ARQUITETURA.md`).
 
 ### Dados de exemplo
 
@@ -193,18 +193,46 @@ ndovu/
 ├── dashboard/                 # Next.js — visão geral, explorador, rastro
 ├── sdk/                       # SDK browser de referência (contrato v1)
 ├── tools/seed/                # simulador de sessões para demo/testes
-├── docs/                      # INTEGRATION.md, ARCHITECTURE.md e CONTRACT.md
+├── docs/                      # ARQUITETURA, EXECUTIVA, FUNCIONAL, TECNICA, USO, TESTING, INTEGRATION, CONTRACT + features/
 └── docker-compose.yml         # clickhouse + nats + api + writer + dashboard
 ```
 
-## Qualidade
+## Qualidade e testes
+
+Plano completo em [`docs/TESTING.md`](docs/TESTING.md). Estado atual (Sprints
+1–6 concluídos):
+
+| Camada | Ferramenta | Cobertura / escopo |
+|--------|-----------|-------|
+| Domain Go | `go test` | 88% |
+| Usecase Go | `go test` | 59% |
+| HTTP handlers | `go test` + fakes | 63% |
+| Adapters (Postgres/ClickHouse/MinIO) | `testcontainers-go` | 60–71% |
+| Dashboard E2E | Playwright | 29 specs — auth, admin CRUD, RBAC, cross-tenant, N apps, triage, funnels, saved views, feedback, rotação de chaves |
 
 ```bash
+# backend — unit + integration
 cd backend && go test ./... && go vet ./...
-# inclui testes de integração do pipeline com NATS JetStream embedded:
-# round-trip, dedup de retry por Msg-Id e reentrega após falha do banco
+# adapters de integração ficam atrás de build tag:
+cd backend && go test -tags=integration ./...
+
+# dashboard — typecheck + E2E
 cd dashboard && npm run typecheck
+cd dashboard && npx playwright test       # sobe stack via docker compose; ver docs/TESTING.md
 ```
+
+## Documentação
+
+- [`docs/EXECUTIVA.md`](docs/EXECUTIVA.md) — pitch e proposta de valor.
+- [`docs/FUNCIONAL.md`](docs/FUNCIONAL.md) — o que cada tela faz.
+- [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md) — decisões e trade-offs.
+- [`docs/TECNICA.md`](docs/TECNICA.md) — endpoints, SDKs, exemplos.
+- [`docs/USO.md`](docs/USO.md) — guia de operação diária.
+- [`docs/INTEGRATION.md`](docs/INTEGRATION.md) e [`docs/CONTRACT.md`](docs/CONTRACT.md) — instrumentar um app.
+- [`docs/TESTING.md`](docs/TESTING.md) — plano de testes.
+- [`docs/features/`](docs/features/) — **guia por funcionalidade** (o que
+  serve, como usar, o que mostrar pro usuário). Comece por
+  [`docs/features/README.md`](docs/features/README.md).
 
 ## Segurança (POC → produção)
 
@@ -212,4 +240,4 @@ cd dashboard && npm run typecheck
 - Mascaramento de PII é responsabilidade do SDK **antes** do envio; a API
   limita payload (1 MB) e valida o contrato.
 - Produção: TLS em tudo, chave read-only para consulta atrás de gateway, rate
-  limit por app, retenção via TTL — ver `docs/ARCHITECTURE.md`.
+  limit por app, retenção via TTL — ver `docs/ARQUITETURA.md`.

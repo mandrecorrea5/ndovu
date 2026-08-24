@@ -8,8 +8,6 @@
 > garantias o sistema oferece e quais são os pontos de extensão.
 >
 > Data desta versão: agosto/2026.
-> O documento `ARCHITECTURE.md` (versão antiga) permanece como
-> referência histórica; este substitui e amplia.
 
 ---
 
@@ -1351,8 +1349,8 @@ build pipeline.
 - **[TECNICA.md](TECNICA.md)** — endpoints, SDKs, exemplos de código.
 - **[CONTRACT.md](CONTRACT.md)** — spec do contrato de ingestão v1.
 - **[INTEGRATION.md](INTEGRATION.md)** — walkthrough de integração.
-- **[ARCHITECTURE.md](ARCHITECTURE.md)** — versão anterior (referência
-  histórica).
+- **[TESTING.md](TESTING.md)** — plano de testes e sprints de cobertura.
+- **[features/](features/)** — guia de cada funcionalidade para uso e demo.
 
 ### A.4. Estatísticas do código
 

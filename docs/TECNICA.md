@@ -1743,9 +1743,11 @@ ndovu/
 │   ├── FUNCIONAL.md
 │   ├── ARQUITETURA.md
 │   ├── TECNICA.md
-│   ├── ARCHITECTURE.md         # legado
+│   ├── USO.md
+│   ├── TESTING.md
 │   ├── CONTRACT.md
-│   └── INTEGRATION.md
+│   ├── INTEGRATION.md
+│   └── features/               # guia por funcionalidade
 ├── docker-compose.yml
 └── README.md
 ```

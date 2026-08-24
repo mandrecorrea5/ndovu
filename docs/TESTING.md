@@ -3,17 +3,54 @@
 > **Público-alvo:** engenharia (backend, frontend, SRE) e tech lead.
 > **Objetivo:** documentar a estratégia de testes automatizados para
 > backend Go e frontend Next.js, com escopo, ferramentas, sprints e
-> critérios mensuráveis. **Este documento é um plano — não execução.**
-> Cada sprint precisa de aprovação para começar.
+> critérios mensuráveis.
 >
 > Data desta versão: agosto/2026.
 
 ---
 
+## 0. Status atual (agosto/2026)
+
+**Sprints 1 → 6 concluídos.** Sprint 7 pendente.
+
+| Sprint | Foco | Entregue | Commit |
+|---|---|---|---|
+| 1 | Domain + services críticos | 88% domain / 59% usecase | `d6bf70f` |
+| 2 | HTTP handlers com fakes | 3.7% → 63.4% em `httpapi` | `49a78d7` |
+| 3 | Adapters com testcontainers | Postgres 68.7% · ClickHouse 60.1% · MinIO 71.4% | `d335008` |
+| 4 | Config + platform + cmd | Config, mailer factory, bootstrap | (no push do sprint 3) |
+| 5 | Playwright setup + auth | 10 specs iniciais (auth, smoke, ingest→view) | `a5bdf06` |
+| 6 | Fluxos de negócio E2E | +10 specs (admin CRUD, RBAC, cross-tenant, N apps, password reset, issue triage, saved views, funnels, feedback widget, rotação de chaves) | `cf75d0b` |
+
+**Suite E2E:** 29 specs, ~30s por rodada, **3 execuções consecutivas verdes**
+antes do merge (`npx playwright test`). Fixtures em
+`dashboard/e2e/fixtures/test.ts` fornecem `api` (APIClient bootstrap) +
+`cleanup` (LIFO); helpers de seed em `dashboard/e2e/helpers/seed.ts`.
+
+**Como rodar localmente:**
+
+```bash
+# Backend — unit
+cd backend && go test ./... && go vet ./...
+
+# Backend — integração (testcontainers, precisa Docker)
+cd backend && go test -tags=integration ./...
+
+# Dashboard — typecheck + E2E (precisa stack local no compose)
+cd dashboard && npm run typecheck
+cd dashboard && npx playwright test --reporter=list
+```
+
+Detalhe de cada sprint (metas, arquivos entregues, decisões) mantido nas
+seções 6–12 abaixo como referência histórica.
+
+---
+
 ## Sumário
 
+0. [Status atual](#0-status-atual-agosto2026)
 1. [Objetivo e princípios](#1-objetivo-e-princípios)
-2. [Estado atual](#2-estado-atual)
+2. [Estado atual (pré-plano)](#2-estado-atual)
 3. [Estratégia — pirâmide de testes](#3-estratégia--pirâmide-de-testes)
 4. [Metas mensuráveis](#4-metas-mensuráveis)
 5. [Ferramentas escolhidas](#5-ferramentas-escolhidas)
@@ -65,6 +102,9 @@ com testes automatizados que:
 ---
 
 ## 2. Estado atual
+
+> Snapshot **pré-plano** (agosto/2026), preservado como baseline. Para o
+> estado real após execução dos sprints 1-6, veja a seção 0 no topo.
 
 Levantamento em agosto/2026.
 
@@ -981,14 +1021,18 @@ npx playwright install --with-deps chromium
 
 ---
 
-## Próximos passos (aguardando aprovação)
+## Próximos passos
 
-1. **Aprovar este plano** — sprints, ferramentas, metas.
-2. **Confirmar CI host** — GitHub Actions, Gitea Actions ou outro?
-3. **Autorizar Sprint 1** — começo pelo backend fundação.
+Sprints 1-6 estão concluídos (ver seção 0). Restam:
 
-Cada sprint executado terá um commit próprio + PR próprio, com
-descrição do que foi coberto + delta de cobertura.
+1. **Sprint 7 — Regressão + robustez** (seção 12): endurecer testes
+   contra flakiness, cobrir bugs históricos, medir wall-clock da suite E2E
+   e paralelizar se possível. Não iniciado.
+2. **CI** (seção 13): pipeline ainda pendente — sem workflow automatizado
+   subindo a suite a cada push. Definir host (GitHub Actions vs Gitea) e
+   escrever `.github/workflows/tests.yml` (ou equivalente).
+3. **Manutenção contínua** (seção 17): nova feature = novo teste; bug fix
+   = teste de regressão antes; flaky é removido, não silenciado.
 
 ---
 
