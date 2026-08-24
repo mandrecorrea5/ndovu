@@ -71,6 +71,17 @@ export class APIClient {
     return resp.json();
   }
 
+  async put(path: string, data: unknown): Promise<any> {
+    const resp = await this.request.put(`${API_BASE}${path}`, {
+      headers: this.authHeaders,
+      data,
+    });
+    if (!resp.ok()) {
+      throw new Error(`PUT ${path}: ${resp.status()} ${await resp.text()}`);
+    }
+    return resp.json();
+  }
+
   async delete(path: string): Promise<void> {
     // Idempotente por definição: se falhar com 404, ignora (recurso já foi).
     const resp = await this.request.delete(`${API_BASE}${path}`, {

@@ -97,3 +97,64 @@ export async function ingestEvent(
     throw new Error(`ingest event: ${resp.status()} ${await resp.text()}`);
   }
 }
+
+/**
+ * Envia 1 feedback via /v1/feedbacks (endpoint do widget do SDK). Usa
+ * X-Api-Key do app-dono. Retorna o feedback criado (id necessário pra
+ * cleanup via admin).
+ */
+export async function postFeedback(
+  request: import('@playwright/test').APIRequestContext,
+  appName: string,
+  apiKey: string,
+  input: { type: 'bug' | 'suggestion' | 'praise' | 'other'; message: string; email?: string },
+): Promise<{ id: string; app: string }> {
+  const resp = await request.post('http://localhost:18081/v1/feedbacks', {
+    headers: { 'X-Api-Key': apiKey },
+    data: {
+      app: appName,
+      sessionId: crypto.randomUUID(),
+      type: input.type,
+      message: input.message,
+      email: input.email,
+      url: 'http://e2e.local/page',
+      viewportW: 1024,
+      viewportH: 768,
+    },
+  });
+  if (!resp.ok()) {
+    throw new Error(`post feedback: ${resp.status()} ${await resp.text()}`);
+  }
+  return resp.json();
+}
+
+/**
+ * Ingest 1 evento tipo `error` — dispara agrupamento por fingerprint no
+ * writer. Use `code` estável (curto, em CAPS) pra o teste conseguir localizar
+ * a issue depois.
+ */
+export async function ingestError(
+  request: import('@playwright/test').APIRequestContext,
+  appName: string,
+  apiKey: string,
+  code: string,
+  message: string,
+): Promise<void> {
+  const resp = await request.post('http://localhost:18081/v1/events', {
+    headers: { 'X-Api-Key': apiKey },
+    data: {
+      app: appName,
+      session: { sessionId: crypto.randomUUID(), userId: 'u-e2e' },
+      events: [{
+        eventId: crypto.randomUUID(),
+        type: 'error',
+        name: code,
+        error: { code, message },
+        timestamp: new Date().toISOString(),
+      }],
+    },
+  });
+  if (!resp.ok()) {
+    throw new Error(`ingest error: ${resp.status()} ${await resp.text()}`);
+  }
+}
