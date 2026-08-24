@@ -42,3 +42,9 @@ Thumbs.db
 # Temporários
 tmp/
 *.tmp
+
+# Playwright — reports, traces, screenshots (regen a cada run)
+dashboard/playwright-report/
+dashboard/test-results/
+dashboard/blob-report/
+dashboard/playwright/.cache/
