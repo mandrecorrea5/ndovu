@@ -230,6 +230,9 @@ cd dashboard && npx playwright test       # sobe stack via docker compose; ver d
 - [`docs/USO.md`](docs/USO.md) — guia de operação diária.
 - [`docs/INTEGRATION.md`](docs/INTEGRATION.md) e [`docs/CONTRACT.md`](docs/CONTRACT.md) — instrumentar um app.
 - [`docs/TESTING.md`](docs/TESTING.md) — plano de testes.
+- [`docs/openshift/`](docs/openshift/) — **plano de deploy no OpenShift**:
+  separação em repositórios, padrão de ConfigMaps/Secrets por ambiente,
+  capacity por projeto e procedimento de deploy.
 - [`docs/features/`](docs/features/) — **guia por funcionalidade** (o que
   serve, como usar, o que mostrar pro usuário). Comece por
   [`docs/features/README.md`](docs/features/README.md).
