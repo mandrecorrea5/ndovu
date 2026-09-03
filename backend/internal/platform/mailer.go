@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -73,7 +74,20 @@ func (m *SMTPMailer) Send(from string, to []string, subject, htmlBody, textBody 
 	if err != nil {
 		return fmt.Errorf("cliente SMTP: %w", err)
 	}
-	defer c.Quit()
+	defer func() {
+		// Quit explícito para não vazar conexão quando Auth/Mail falha
+		// (defer c.Quit() simples dispara c.Quit em client nil/half-open).
+		_ = c.Quit()
+	}()
+
+	// STARTTLS oportunista: sobe TLS se o servidor anunciar (nosso maddy
+	// exige; MailHog local não anuncia e segue plaintext). Falha aborta
+	// o envio — melhor que creds em claro na rede.
+	if ok, _ := c.Extension("STARTTLS"); ok {
+		if err := c.StartTLS(&tls.Config{ServerName: m.cfg.Host}); err != nil {
+			return fmt.Errorf("STARTTLS: %w", err)
+		}
+	}
 
 	if m.cfg.Username != "" {
 		auth := smtp.PlainAuth("", m.cfg.Username, m.cfg.Password, m.cfg.Host)
