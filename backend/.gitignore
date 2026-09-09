@@ -1,0 +1,30 @@
+# Env / segredos
+.env
+.env.local
+.env.*.local
+
+# Artefatos Go
+bin/
+*.test
+coverage.out
+coverage.html
+
+# Dados locais do compose de dev
+data/
+volumes/
+*.pid
+*.sock
+
+# Logs
+*.log
+logs/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Temporários
+tmp/
+*.tmp

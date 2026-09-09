@@ -1,0 +1,16 @@
+# Valores renderizados e segredos decifrados — nunca versionar
+*.rendered.yaml
+*-decrypted.yaml
+secrets.local/
+
+# Helm
+charts/
+*.tgz
+
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+tmp/
+*.tmp

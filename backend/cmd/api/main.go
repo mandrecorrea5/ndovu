@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -20,7 +21,7 @@ import (
 	"github.com/marcoscorrea/ndovu/backend/internal/adapter/clickhouse"
 	"github.com/marcoscorrea/ndovu/backend/internal/adapter/ctlpostgres"
 	"github.com/marcoscorrea/ndovu/backend/internal/adapter/httpapi"
-	"github.com/marcoscorrea/ndovu/backend/internal/adapter/natsstream"
+	"github.com/marcoscorrea/ndovu/backend/internal/adapter/stream"
 	"github.com/marcoscorrea/ndovu/backend/internal/config"
 	"github.com/marcoscorrea/ndovu/backend/internal/platform"
 	"github.com/marcoscorrea/ndovu/backend/internal/usecase"
@@ -43,16 +44,32 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Stream (lado de publicação da ingestão)
-	nc, err := natsstream.Connect(cfg.NatsURL)
+	// Stream (lado de publicação da ingestão) — backend selecionado por
+	// NDOVU_STREAM_BACKEND (nats | kafka)
+	streamRT, err := stream.New(ctx, stream.Options{
+		Backend:              stream.Backend(cfg.StreamBackend),
+		NatsURL:              cfg.NatsURL,
+		NatsMaxAge:           cfg.StreamMaxAge,
+		WriterBatch:          cfg.WriterBatch,
+		WriterMaxWait:        cfg.WriterMaxWait,
+		KafkaBrokers:         splitCSV(cfg.KafkaBrokers),
+		KafkaEventsTopic:     cfg.KafkaEventsTopic,
+		KafkaDLQTopic:        cfg.KafkaDLQTopic,
+		KafkaConsumerGroup:   cfg.KafkaConsumerGroup,
+		KafkaPartitions:      cfg.KafkaPartitions,
+		KafkaReplication:     cfg.KafkaReplication,
+		KafkaRetention:       cfg.KafkaRetention,
+		KafkaMaxPoll:         cfg.KafkaMaxPoll,
+		KafkaFetchMaxWait:    cfg.KafkaFetchMaxWait,
+		RabbitMQURL:          cfg.RabbitMQURL,
+		RabbitMQEventsQueue:  cfg.RabbitMQEventsQueue,
+		RabbitMQDLQQueue:     cfg.RabbitMQDLQQueue,
+		RabbitMQConsumerName: cfg.RabbitMQConsumerName,
+	}, logger)
 	if err != nil {
-		return fmt.Errorf("conectando ao NATS: %w", err)
+		return fmt.Errorf("inicializando buffer de ingestão: %w", err)
 	}
-	defer nc.Close()
-	js, err := natsstream.EnsureStream(ctx, nc, cfg.StreamMaxAge)
-	if err != nil {
-		return err
-	}
+	defer streamRT.Close()
 
 	// ClickHouse (lado de consulta) — o schema é garantido por quem chegar primeiro
 	repo, err := clickhouse.Connect(ctx, clickhouse.Options{
@@ -141,7 +158,7 @@ func run() error {
 		return err
 	}
 
-	ingestSvc := usecase.NewIngestService(natsstream.NewPublisher(js), logger)
+	ingestSvc := usecase.NewIngestService(streamRT.Publisher, logger)
 	querySvc := usecase.NewQueryService(repo).WithFeedbackFallback(ctl)
 	handlers := httpapi.NewHandlers(ingestSvc, querySvc, authSvc, keySvc, appSvc, companySvc, issueSvc, alertSvc, releaseSvc, sourceMapSvc, savedViewSvc, funnelSvc, retentionSvc, digestSvc, auditSvc, gdprSvc, permissionSvc, samplingSvc, snapshotSvc, anomalySvc, feedbackSvc, logger)
 	router := httpapi.NewRouter(handlers, cfg, authSvc, keySvc, ctl, ctl, metrics, logger, api.SpecFS)
@@ -172,4 +189,19 @@ func run() error {
 		defer cancel()
 		return srv.Shutdown(shutdownCtx)
 	}
+}
+
+// splitCSV divide "a,b,c" em []string sem vazios/espaços (brokers, origins).
+func splitCSV(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := parts[:0]
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }

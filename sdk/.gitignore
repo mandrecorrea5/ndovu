@@ -1,0 +1,15 @@
+node_modules/
+dist/
+*.tgz
+.npmrc
+
+*.log
+logs/
+
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+tmp/
+*.tmp

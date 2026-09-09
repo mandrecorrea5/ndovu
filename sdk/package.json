@@ -1,0 +1,40 @@
+{
+  "name": "@ndovu/sdk",
+  "version": "1.2.0",
+  "description": "SDKs de referência do contrato v1 do Ndovu — browser, Next.js, Node e React Native. Dependências zero.",
+  "type": "module",
+  "license": "UNLICENSED",
+  "private": false,
+  "files": [
+    "src/",
+    "README.md"
+  ],
+  "exports": {
+    "./browser": "./src/ndovu-browser.js",
+    "./next": "./src/ndovu-next.js",
+    "./node": "./src/ndovu-node.js",
+    "./react-native": "./src/ndovu-react-native.js"
+  },
+  "scripts": {
+    "check": "node --check src/ndovu-browser.js && node --check src/ndovu-next.js && node --check src/ndovu-node.js && node --check src/ndovu-react-native.js && node --check tools/seed/seed.mjs",
+    "test:exports": "node --input-type=module -e \"const mods=['./src/ndovu-node.js','./src/ndovu-react-native.js']; for (const m of mods) { const x = await import(m); if (!x.createNdovu) throw new Error('createNdovu ausente em '+m); } console.log('exports ok');\"",
+    "seed": "node tools/seed/seed.mjs"
+  },
+  "peerDependencies": {
+    "next": ">=14",
+    "react-native": ">=0.72"
+  },
+  "peerDependenciesMeta": {
+    "next": { "optional": true },
+    "react-native": { "optional": true }
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "ndovu",
+    "tracing",
+    "frontend",
+    "observability"
+  ]
+}

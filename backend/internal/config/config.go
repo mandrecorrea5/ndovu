@@ -31,11 +31,31 @@ type Config struct {
 	ClickHouseUser     string
 	ClickHousePassword string
 
-	// NATS JetStream (buffer durável entre ingestão e persistência)
+	// Buffer de ingestão (NATS JetStream ou Apache Kafka)
+	StreamBackend string // "nats" (default) | "kafka"
+
+	// NATS JetStream (usado quando StreamBackend == "nats")
 	NatsURL       string
 	StreamMaxAge  time.Duration // janela de replay do stream
 	WriterBatch   int           // mensagens por fetch do writer
 	WriterMaxWait time.Duration // espera máxima para completar um fetch
+
+	// Kafka (usado quando StreamBackend == "kafka")
+	KafkaBrokers       string        // lista separada por vírgula
+	KafkaEventsTopic   string        // tópico principal de ingestão
+	KafkaDLQTopic      string        // tópico de dead-letter
+	KafkaConsumerGroup string        // grupo do writer
+	KafkaPartitions    int           // partições do tópico de eventos
+	KafkaReplication   int           // fator de replicação dos tópicos
+	KafkaRetention     time.Duration // janela de replay no tópico de eventos
+	KafkaMaxPoll       int           // máx. mensagens por ciclo do consumer
+	KafkaFetchMaxWait  time.Duration // espera máxima por batch no consumer
+
+	// RabbitMQ (usado quando StreamBackend == "rabbitmq")
+	RabbitMQURL          string // amqp://user:pass@host:5672/vhost
+	RabbitMQEventsQueue  string // fila principal de ingestão
+	RabbitMQDLQQueue     string // fila de dead-letter
+	RabbitMQConsumerName string // consumer tag do writer
 
 	// Rate limit por API key (requests/segundo). 0 desliga.
 	IngestRateRPS float64
@@ -57,13 +77,13 @@ type Config struct {
 
 	// Mailer (digest semanal). Provider "" (auto) escolhe SendGrid se a chave
 	// estiver setada, senão SMTP, senão noop (loga sem enviar).
-	MailerProvider   string
-	SMTPHost         string
-	SMTPPort         int
-	SMTPUser         string
-	SMTPPassword     string
-	SMTPFrom         string
-	SendGridAPIKey   string
+	MailerProvider string
+	SMTPHost       string
+	SMTPPort       int
+	SMTPUser       string
+	SMTPPassword   string
+	SMTPFrom       string
+	SendGridAPIKey string
 
 	// Digest: destinatários (comma-separated) + agendamento (weekday + hora UTC).
 	// URL do dashboard entra nos links do e-mail.
@@ -89,10 +109,27 @@ func Load() (Config, error) {
 		ClickHouseUser:     envStr("NDOVU_CLICKHOUSE_USER", "ndovu"),
 		ClickHousePassword: envStr("NDOVU_CLICKHOUSE_PASSWORD", "ndovu"),
 
+		StreamBackend: envStr("NDOVU_STREAM_BACKEND", "nats"),
+
 		NatsURL:       envStr("NDOVU_NATS_URL", "nats://localhost:4222"),
 		StreamMaxAge:  time.Duration(envInt("NDOVU_STREAM_MAX_AGE_HOURS", 48)) * time.Hour,
 		WriterBatch:   envInt("NDOVU_WRITER_BATCH", 64),
 		WriterMaxWait: time.Duration(envInt("NDOVU_WRITER_MAX_WAIT_MS", 1000)) * time.Millisecond,
+
+		KafkaBrokers:       envStr("NDOVU_KAFKA_BROKERS", "localhost:9092"),
+		KafkaEventsTopic:   envStr("NDOVU_KAFKA_EVENTS_TOPIC", "ndovu.events"),
+		KafkaDLQTopic:      envStr("NDOVU_KAFKA_DLQ_TOPIC", "ndovu.dlq"),
+		KafkaConsumerGroup: envStr("NDOVU_KAFKA_CONSUMER_GROUP", "ndovu-writer"),
+		KafkaPartitions:    envInt("NDOVU_KAFKA_PARTITIONS", 32),
+		KafkaReplication:   envInt("NDOVU_KAFKA_REPLICATION_FACTOR", 3),
+		KafkaRetention:     time.Duration(envInt("NDOVU_KAFKA_RETENTION_HOURS", 48)) * time.Hour,
+		KafkaMaxPoll:       envInt("NDOVU_KAFKA_MAX_POLL_RECORDS", 64),
+		KafkaFetchMaxWait:  time.Duration(envInt("NDOVU_KAFKA_FETCH_MAX_WAIT_MS", 1000)) * time.Millisecond,
+
+		RabbitMQURL:          envStr("NDOVU_RABBITMQ_URL", "amqp://ndovu:ndovu@localhost:5672/"),
+		RabbitMQEventsQueue:  envStr("NDOVU_RABBITMQ_EVENTS_QUEUE", "ndovu.events"),
+		RabbitMQDLQQueue:     envStr("NDOVU_RABBITMQ_DLQ_QUEUE", "ndovu.dlq"),
+		RabbitMQConsumerName: envStr("NDOVU_RABBITMQ_CONSUMER_NAME", "ndovu-writer"),
 
 		PostgresURL:        envStr("NDOVU_POSTGRES_URL", "postgres://ndovu:ndovu@localhost:5432/ndovu?sslmode=disable"),
 		AuthSecret:         envStr("NDOVU_AUTH_SECRET", "dev-secret-troque-em-producao"),

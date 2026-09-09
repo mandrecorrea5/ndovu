@@ -5,7 +5,8 @@
 // e registra t.Cleanup para derrubar o container após o teste.
 //
 // Todos os testes que usam este pacote precisam da build tag `integration`:
-//   go test -tags=integration ./...
+//
+//	go test -tags=integration ./...
 //
 // Isso mantém `go test ./...` rápido (só unit tests) e restringe a suite
 // pesada ao CI / execução manual quando necessário.
@@ -25,6 +26,8 @@ import (
 	tcch "github.com/testcontainers/testcontainers-go/modules/clickhouse"
 	tcminio "github.com/testcontainers/testcontainers-go/modules/minio"
 	tcpg "github.com/testcontainers/testcontainers-go/modules/postgres"
+	tcrabbit "github.com/testcontainers/testcontainers-go/modules/rabbitmq"
+	tcredpanda "github.com/testcontainers/testcontainers-go/modules/redpanda"
 
 	"github.com/marcoscorrea/ndovu/backend/internal/adapter/blobstore"
 	"github.com/marcoscorrea/ndovu/backend/internal/adapter/clickhouse"
@@ -252,3 +255,56 @@ func StartMinIO(t *testing.T) *blobstore.MinIO {
 	return store
 }
 
+// KafkaBrokers sobe um Redpanda (API-compatível com Kafka) em container
+// efêmero e devolve a lista de brokers. Container derruba no cleanup.
+func KafkaBrokers(t *testing.T) []string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	container, err := tcredpanda.Run(ctx,
+		"docker.redpanda.com/redpandadata/redpanda:v24.2.1",
+	)
+	if err != nil {
+		t.Fatalf("subindo Redpanda testcontainer: %v", err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = container.Terminate(ctx)
+	})
+
+	broker, err := container.KafkaSeedBroker(ctx)
+	if err != nil {
+		t.Fatalf("obtendo seed broker: %v", err)
+	}
+	return []string{broker}
+}
+
+// RabbitMQURL sobe um RabbitMQ em container efêmero e devolve a URL AMQP.
+// Container derruba no cleanup.
+func RabbitMQURL(t *testing.T) string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	container, err := tcrabbit.Run(ctx,
+		"rabbitmq:3.13-management-alpine",
+		tcrabbit.WithAdminUsername("ndovu"),
+		tcrabbit.WithAdminPassword("ndovu"),
+	)
+	if err != nil {
+		t.Fatalf("subindo RabbitMQ testcontainer: %v", err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = container.Terminate(ctx)
+	})
+
+	url, err := container.AmqpURL(ctx)
+	if err != nil {
+		t.Fatalf("obtendo AMQP URL: %v", err)
+	}
+	return url
+}

@@ -1,0 +1,43 @@
+# Pipeline do ndovu-sdk. Publica pacote npm — não gera imagem nem deploy.
+#
+# ATENÇÃO: se o host canônico for o GitLab/Gitea corporativo em vez do GitHub,
+# traduza para o formato daquele runner — as etapas permanecem as mesmas.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    name: Parse e exports
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Sintaxe de todos os entry points
+        run: npm run check
+      - name: Exports de node e react-native
+        run: npm run test:exports
+      # ndovu-next.js importa `next` como peer dependency opcional; validá-lo
+      # exige instalar o Next, o que não se justifica só para conferir export.
+
+  publish:
+    name: Publish
+    runs-on: ubuntu-latest
+    needs: [check]
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # O major acompanha a versão do contrato v1. Quebrar o payload sem bump
+      # de major derruba ingestão de apps que este repositório não conhece.
+      - name: Publish no registry interno
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
