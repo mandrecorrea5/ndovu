@@ -109,6 +109,6 @@ docker compose --env-file .env.production \
 - NATS: `http://nats:8222/healthz` (rede interna do compose).
 - Writer: sem rota de saúde — sinais são `docker logs` +
   `NumPending` (runbook `jetstream-backlog.md`).
-- **`/metrics` está publicado sem auth atrás do Caddy** — pendência B5
-  (proxy-auth no Caddy); enquanto não fechar, trate o domínio da API como
-  surface exposta de métricas de tráfego/erros.
+- **`/metrics` exige Basic Auth no Caddy** (`NDOVU_METRICS_PASSWORD_HASH`,
+  usuário `metrics`). Prometheus/scrape envia o header; um browser não
+  manda auth em navegação — use o proxy do monitoramento.

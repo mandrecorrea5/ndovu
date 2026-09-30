@@ -1,28 +1,24 @@
 {
 	email {$NDOVU_TLS_EMAIL}
 	admin localhost:2019
-
-	# 1ª subida sem DNS (hosts = IP/hostname sem registro): desliga
-	# ACME e a confiança automática; certs sempre self-signed
-	# (tls internal). Domínio real: NDOVU_AUTO_HTTPS=false continua ok
-	# e tls internal também vale p/ dev local.
 	{$NDOVU_AUTO_HTTPS:auto_https off}
 	{$NDOVU_TRUST:skip_install_trust}
 }
 
 # ════════════════════════════════════════════════════════════════════
-# 1 server, 1 env de cabeçalho.
-# 1ª subida, sem DNS: NDOVU_APP_DOMAIN = IP da VPS + NDOVU_TLS_MODE=internal
-# (LE não assina IP → self-signed). Domínio real: NDOVU_APP_DOMAIN=dominio
-# + NDOVU_TLS_MODE=acme + NDOVU_TLS_EMAIL.
+# 2 servers no MESMO host, distinguidos por cabeçalho Host.
+# 1ª subida, sem DNS: NDOVU_APP_DOMAIN = IP da VPS (ex. 157.254.207.131).
 #
-# A env NDOVU_API_DOMAIN é usada só pelo smoke/README (mesma porta 8443;
-# a API é exposta em /api/* e /metrics neste mesmo server).
-# Sem Basic Auth no site do app (browser não manda auth em navegação);
-# a API própria (Next.js) protege /api/* com sessão.
+#   {$NDOVU_APP_DOMAIN}              → dashboard + /api/* + /metrics
+#   api.{$NDOVU_APP_DOMAIN}          → api:8080 + /metrics
+#
+# TLS por env: NDOVU_TLS_MODE=internal (padrão; IP/sem ACME) ou
+# =acme com domínio real — neste caso esvazie também NDOVU_AUTO_HTTPS
+# e NDOVU_TRUST (deixe as envs sem valor) para o ACME assumir.
 # ════════════════════════════════════════════════════════════════════
 {$NDOVU_APP_DOMAIN} {
-	tls {$NDOVU_TLS_MODE}
+	tls {$NDOVU_TLS_MODE:internal}
+
 	header {
 		Strict-Transport-Security "max-age=63072000; includeSubDomains"
 		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
@@ -48,5 +44,34 @@
 	}
 	handle {
 		reverse_proxy dashboard:3000
+	}
+}
+
+# Host da API (deploy curl, cliente). /api/* corta o prefixo (o api
+# escuta rotas raiz); resto → api (healthz etc.).
+api.{$NDOVU_APP_DOMAIN} {
+	tls {$NDOVU_TLS_MODE:internal}
+
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+		-X-Powered-By
+	}
+	encode zstd gzip
+	handle /api/* {
+		uri strip_prefix /api
+		reverse_proxy api:8080
+	}
+	handle /metrics {
+		basic_auth {
+			metrics {$NDOVU_METRICS_PASSWORD_HASH}
+		}
+		reverse_proxy api:8080
+	}
+	handle {
+		reverse_proxy api:8080
 	}
 }
