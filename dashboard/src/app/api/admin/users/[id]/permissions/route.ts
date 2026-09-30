@@ -6,15 +6,15 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(
-  req: NextRequest, ctx: { params: Promise<{ userId: string }> },
+  req: NextRequest, ctx: { params: Promise<{ id: string }> },
   
 ) {
   const session = await requireSession();
-  const userId = (await ctx.params).userId;
+  const id = (await ctx.params).id;
   
   return upstreamRequest(
     "GET",
-    `/v1/admin/users/${userId}/permissions`,
+    `/v1/admin/users/${id}/permissions`,
     session.token,
     undefined,
     req.nextUrl.searchParams,
