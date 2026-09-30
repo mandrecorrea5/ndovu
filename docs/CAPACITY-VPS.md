@@ -10,13 +10,14 @@ efetivos no ClickHouse (ZSTD + projection ×2).
 
 **Hardware contratado: 4 vCPUs · 8 GB RAM · 200 GB SSD.**
 
-**Veredito honesto contra os tiers do CAPACITY.md original:**
-- **RAM 8 GB ≈ tier P+ apertado** (o tier M do OpenShift pede 16 Gi só de
-  requests). Este documento dimensiona **até 5 M eventos/dia**.
-- **4 vCPUs** servem 5 M/dia com folga (a carga é dominada por ClickHouse em
-  consultas, não por ingestão).
-- **200 GB SSD é OK para 5 M/dia** — desde que a janela do stream seja
-  reduzida (§4). Acima de 5 M/dia o hot estoura (§5).
+**Veredito honesto (teto = 8 GB de RAM):**
+- **≤ ~1 M ev/dia: roda hoje**, sem nenhuma mudança (§5 — 32% de disco).
+- **≤ 5 M ev/dia:** RAM é o teto e exige as mudanças de §8 + **alavanca de
+  §5** (volume extra OU cold a partir de 14d). 4 vCPUs acompanham.
+- **> 5 M/dia:** a VPS não serve — 8 GB é tier P+/M apertado (o
+  CAPACITY.md do OpenShift pede 16 Gi de requests no tier M). Os
+  gatilhos de upgrade são do §7; planejar OpenShift com 1 sprint de
+  antecedência, nunca em incidente.
 
 ## 1. O que muda numa VPS única
 
@@ -98,27 +99,52 @@ capacidade é **CPU steal do hypervisor** do provedor (monitorar).
 
 ## 5. Orçamento de disco — 200 GB
 
-| Item | 5 M/dia (nosso plano) |
-|---|---|
-| ClickHouse **hot** (7d × 1,7 de merge) | 60 GB |
-| ClickHouse **warm** (23d × 1,2) — **mesmo SSD**, a política atual não separa discos na VPS | 83 GB |
-| NATS (12h + 40% folga) | 8 GB |
-| Postgres + WAL | 10 GB |
-| Docker (imagens, logs json) + SO + folga | 25 GB |
-| **total** | **~186 GB — 93%** ⚠️ |
+Dois cenários, conforme a idade a que o cold é movido. A policy local
+(`infra/clickhouse/storage.xml`) não tem S3 — **warm 7–30d fica no SSD da
+VPS**; o R2 só entra a partir do cold (`storage-r2.xml` em produção é a
+política de produção). Por isso o cenário de 5 M/dia precisa da alavanca
+de warm mais cedo, ou do volume extra.
 
-**Aprovação com ressalva:** 186/200 com 93% de uso **não é aceitável**.
-Alavancas, na ordem de preferência:
+| Item | 5 M/dia | 1 M/dia (piloto) |
+|---|---|---|
+| CH **hot** 7d × 1,7 (600 B/ev) | 60 GB | 12 GB |
+| CH **warm 7–30d** × 1,2 — **SSD local** (sem S3) | 83 GB | 17 GB |
+| CH **cold 30–90d** (S3/R2, fora do disco) | — | — |
+| NATS 12h + 40% folga | 8 GB | 2 GB |
+| Postgres + WAL | 10 GB | 8 GB |
+| Docker (imagens, logs json) + SO + folga | 25 GB | 25 GB |
+| **total local** | **186 GB — 93%** ⚠️ | **64 GB — 32%** ✅ |
 
-1. **Mover o warm para mais cedo** (ex.: 14d em vez de 30d):
-   warm 14d × 1,2 × 3 GB/dia efetivo = **50 GB** → total **~153 GB (77%)**.
-   É 1 `ALTER TABLE ... MODIFY TTL` (a ferramenta de TTL do ClickHouse é
-   idempotente e roda em background). **Recomendado.**
-2. **Volume extra (250–500 GB de bloco) montado como `chdata-warm`** —
-   resolve sem mexer em retenção (~US$ 10–20/mês). Melhor caminho se o
-   1º cliente contratual exigir os 90d completos quentes/frios.
-3. **Encurtar a retenção global 90d→60d** — decisão de produto (LGPD/SLA),
-   não operacional.
+**Aprovação:** 93% **não é aceitável** para 5 M/dia nos 200 GB. O
+piloto/primeiros clientes (até ~1 M/dia) roda confortável hoje, sem
+mexer em nada.
+
+**Premissa deste §5:** a **política de produção com 3 tiers**
+(`storage-r2.xml`: 0–7d hot · 7–30d warm · 30–90d **R2** · delete 90d) —
+o cold fica no R2, **não no SSD local**. Se a política aplicada for a
+**local de 2 tiers** (`storage.xml`: 0–7d hot · 7–90d **warm local**,
+porque `storage.xml` não define disco S3 — é a que o compose base usa
+se o overlay R2 não estiver montado), o 30–90d **conta no disco local** e
+os 200 GB **não chegam nem para 5 M/dia**: 7d × 1,7 + 83d × 1,2 ≈ 60 +
+300 GB. **Confirmar antes do go-live qual XML a VPS monta** (a
+produção deve aplicar o overlay do compose de produção, que é o
+`storage-r2.xml`).
+
+**Alavancas para 5 M/dia, na ordem de preferência:**
+
+1. **Volume extra de 250–500 GB (SSD/HDD de bloco) montado como
+   `chdata-warm`** — o mais frio sai do SSD principal sem tocar em
+   retenção (~US$ 10–20/mês). **Recomendado para 5 M/dia.**
+2. **Cold a partir de 14d** (em vez de 30d): o 14–30d vai ao R2
+   (`INTERVAL 14 DAY TO VOLUME 'cold'`), deixando no SSD só 0–7d +
+   7–14d ≈ 77 GB → total **~130 GB (65%)**. Custo: 14–30d consultado
+   vem do R2 (latência maior nas consultas desse período).
+3. **Encurtar a retenção global 90d→60d** — decisão de produto
+   (LGPD/SLA), não operacional.
+
+Regra de medição (aplicar sempre): rodar a query de bytes/evento real
+(`docs/openshift/CAPACITY.md` §7) a cada onboarding — 600 B/evento é a
+premissa, não a medição.
 
 ## 6. Limites por tenant com 1 só stack
 
@@ -133,7 +159,9 @@ recursos por empresa**. O que protege o vizinho:
 
 ## 7. Quando a VPS única deixa de servir (gatilhos de upgrade)
 
-- **> 5 M ev/dia sustentado** (RAM é o teto primeiro: 8 GB).
+- **> 1 M/dia sustentado:** a 1ª alavanca é disco (§5) — a 2ª é **RAM**:
+  8 GB limita as consultas do ClickHouse (1,5G/consulta com 4G de
+  container); volume alto + consultas longas estoura.
 - 1º OOM kill em postgres/api, ou 2º em 90d qualquer.
 - Volume de snapshots de replay crescendo (bucket `ndovu-snapshots` é
   R2 — não pesa no SSD, mas a consulta pesa).
