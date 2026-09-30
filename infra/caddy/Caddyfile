@@ -38,10 +38,15 @@
 		-X-Powered-By
 	}
 
-	rate_limit {
-		period 1s
-		quota 200
-		burst 100
+	# Rate limit na borda: a imagem oficial do Caddy (2.9) NÃO traz módulo de
+	# rate limit — o de ingestão vive na API Go (token bucket por X-Api-Key,
+	# NDOVU_INGEST_RATE_RPS).
+	# /metrics expõe contadores de tráfego/erros e fica atrás de Basic Auth
+	# (hash bcrypt gerado com `caddy hash-password`). O scraper do
+	# monitoramento usa a senha (NDOVU_METRICS_PASSWORD) cujo hash está em
+	# NDOVU_METRICS_PASSWORD_HASH no .env.production. /health permanece público.
+	basic_auth /metrics {
+		ndovu {$NDOVU_METRICS_PASSWORD_HASH}
 	}
 
 	reverse_proxy api:8080

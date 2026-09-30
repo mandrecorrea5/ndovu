@@ -61,6 +61,21 @@ O Caddy solicita e renova certificados automaticamente via ACME quando os
 domínios estiverem apontados para a VPS. Antes disso, não inicie o perfil
 publicamente: os domínios de exemplo não emitirão certificados úteis.
 
+**`/metrics` protegido:** a rota de métricas da API (contadores de
+tráfego/erros) exige Basic Auth no Caddy — usuário `ndovu`, senha cujo
+hash bcrypt está em `NDOVU_METRICS_PASSWORD_HASH` (gere a senha com
+`openssl rand -hex 24` e o hash com
+`docker run --rm caddy:2.9-alpine caddy hash-password --plaintext '<senha>'`).
+O scraper do monitoramento usa usuário/senha; `/health` permanece público
+(é a sonda de uptime). Teste: sem credencial → 401; com a senha → 200.
+
+**Rate limit:** a imagem oficial do Caddy 2.9 **não** inclui diretiva de
+rate limit — a proteção de ingestão vive na API Go (token bucket por
+`X-Api-Key`, `NDOVU_INGEST_RATE_RPS`, default 50 rps). Não adicione
+`rate_limit` ao Caddyfile sem validar a disponibilidade do módulo na
+versão pinada (a config é validada no boot e o Caddy não sobe com
+diretiva desconhecida).
+
 Quando o DNS estiver pronto, confirme que 80 e 443 chegam à VPS, preencha os
 domínios reais e valide:
 

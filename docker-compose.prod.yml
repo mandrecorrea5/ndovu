@@ -6,6 +6,9 @@ services:
       NDOVU_APP_DOMAIN: "${NDOVU_APP_DOMAIN:?Set NDOVU_APP_DOMAIN}"
       NDOVU_API_DOMAIN: "${NDOVU_API_DOMAIN:?Set NDOVU_API_DOMAIN}"
       NDOVU_TLS_EMAIL: "${NDOVU_TLS_EMAIL:?Set NDOVU_TLS_EMAIL}"
+      # Basic Auth de /metrics (usuário ndovu). Hash bcrypt
+      # (caddy hash-password) — a senha clara vive só no cofre do monitoramento.
+      NDOVU_METRICS_PASSWORD_HASH: "${NDOVU_METRICS_PASSWORD_HASH:?Set NDOVU_METRICS_PASSWORD_HASH}"
     ports:
       - "80:80"
       - "443:443"
