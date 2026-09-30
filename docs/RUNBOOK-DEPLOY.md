@@ -40,6 +40,26 @@ curl -sSf https://NDOVU_API_DOMAIN/health   # 200
    Encrypt). Erros ACME: veja `docker compose logs caddy` antes de insistir
    (rate limit do ACME é por domínio).
 
+### 1.5 Primeira subida sem domínio (IP direto da VPS)
+
+Enquanto o domínio não estiver provisionado, a VPS pode ser publicada **por
+IP** com segurança, via `NDOVU_BOOTSTRAP_IPS` (IPs separados por vírgula) +
+`NDOVU_BOOTSTRAP_PASSWORD_HASH` (hash da senha de bootstrap). O Caddy serve
+cada IP com **TLS auto-signado** (o browser vai alertar — esperado) e
+**Basic Auth global**. A API Go continua autenticando a ingestão por
+`X-Api-Key` normalmente.
+
+Limites deste perfil (e por que é transitório):
+- **Sem ACME** — o browser não confia no certificado interno. SDKs de
+  produção **não** devem apontar para `https://IP` (validação de certificado
+  falha).
+- **Uma única senha global** — sem isolamento por usuário; é a chave-mestra
+  da VPS.
+- Ao apontar o DNS: esvaziar `NDOVU_BOOTSTRAP_IPS` e remover o hash → os
+  blocos por IP somem e só os domínios atendem.
+- **Regra:** a VPS nunca sobe sem domínio **nem** sem bootstrap — a
+  ausência dos dois derruba a stack (protegido no Caddyfile).
+
 ## 2. Update de versão (rotina)
 
 ```bash

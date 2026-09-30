@@ -7,6 +7,54 @@
 # funciona com fragmentos `(name)` entre sites). Por isso as diretivas estão
 # repetidas nos dois sites.
 
+# ════════════════════════════════════════════════════════════════════
+# Perfil de exposição — 1ª subida sem domínio (NDOVU_BOOTSTRAP_IPS)
+# ════════════════════════════════════════════════════════════════════
+# Quando a VPS ainda não tem domínio apontado (provisionamento em
+# curso), defina NDOVU_BOOTSTRAP_IPS com os IPs públicos da VPS
+# separados por vírgula. Cada IP publicado recebe:
+#   - TLS **auto-signado** (o browser vai alertar — é o esperado);
+#   - Basic Auth **obrigatório em TUDO** (o site é a porta de
+#     ingestão/backoffice sem domínio ainda).
+# Ao apontar o DNS real, esvazie a variável: os blocos somem e o
+# ACME assume os domínios normais.
+#
+# NUNCA publique a VPS sem domínio E sem esta variável — isso
+# deixaria a stack aberta na internet sem autenticação.
+{$NDOVU_BOOTSTRAP_IPS} {
+	tls internal
+	basic_auth {
+		bootstrap {$NDOVU_BOOTSTRAP_PASSWORD_HASH}
+	}
+	# 1:1 com o site de produção por domínio (mesmos headers/CSP/
+	# rate de ingestão via API Go). Bloco repetido por
+	# limitação do import em fragmentos.
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		Cross-Origin-Resource-Policy "same-origin"
+		-Server
+		-X-Powered-By
+	}
+	encode zstd gzip
+	# 127.0.0.1 = "localhost fixo" da própria VPS; a API responde a
+	# ambos (api:8080) — sem dependência de DNS interno aqui.
+	handle /api/* {
+		rewrite * {path}
+		reverse_proxy 127.0.0.1:8080
+	}
+	reverse_proxy 127.0.0.1:3000
+}
+
+# ════════════════════════════════════════════════════════════════════
+# Produção com domínio (padrão — ACME automático)
+# ════════════════════════════════════════════════════════════════════
+
 {$NDOVU_APP_DOMAIN} {
 	header {
 		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
