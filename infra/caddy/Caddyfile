@@ -3,34 +3,67 @@
 	admin localhost:2019
 }
 
-# Blocos reutilizados (`import` do Caddy precisa de um arquivo à parte, não
-# funciona com fragmentos `(name)` entre sites). Por isso as diretivas estão
-# repetidas nos dois sites.
-
 # ════════════════════════════════════════════════════════════════════
-# Perfil de exposição — 1ª subida sem domínio (NDOVU_BOOTSTRAP_IPS)
+# Perfis de exposição
 # ════════════════════════════════════════════════════════════════════
-# Quando a VPS ainda não tem domínio apontado (provisionamento em
-# curso), defina NDOVU_BOOTSTRAP_IPS com os IPs públicos da VPS
-# separados por vírgula. Cada IP publicado recebe:
-#   - TLS **auto-signado** (o browser vai alertar — é o esperado);
-#   - Basic Auth **obrigatório em TUDO** (o site é a porta de
-#     ingestão/backoffice sem domínio ainda).
-# Ao apontar o DNS real, esvazie a variável: os blocos somem e o
-# O corpo vai no import abaixo (placeholder {$VAR} em header de
-# server block vazio colapsa a config — por isso o corpo é separado).
-{$NDOVU_BOOTSTRAP_IPS} {
-	import /etc/caddy/bootstrap-body
-}
-
-# ════════════════════════════════════════════════════════════════════
-# Produção com domínio (padrão — ACME automático)
-# ════════════════════════════════════════════════════════════════════
-
+# 1ª subida, sem DNS: NDOVU_BOOTSTRAP_IPS = IP da VPS (e
+# NDOVU_APP_DOMAIN/NDOVU_API_DOMAIN = mesma env — o compose faz o
+# default encadear). TLS interno + Basic Auth global no site do app.
+#
+# Domínio: preencha as 2 envs de domínio e ESVAZIE as 2 de bootstrap —
+# a diretiva {$ENV:} condicional desaparece junto com a env.
+#
+# (Placeholder {$VAR} puro no cabeçalho de um server block colapsa a
+# config quando a env está vazia → por isso a env do perfil IP é a
+# única fonte de cabeçalho de server.)
 {$NDOVU_APP_DOMAIN} {
-	import /etc/caddy/site-body
+	{$NDOVU_BOOTSTRAP_IPS:tls internal}
+	{$NDOVU_BOOTSTRAP_IPS:basic_auth}{
+		{$NDOVU_BOOTSTRAP_IPS:bootstrap {$NDOVU_BOOTSTRAP_PASSWORD_HASH}}
+	{$NDOVU_BOOTSTRAP_IPS:}
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		Cross-Origin-Resource-Policy "same-origin"
+		-Server
+		-X-Powered-By
+	}
+	encode zstd gzip
+	handle /api/* {
+		uri strip_prefix /api
+		reverse_proxy api:8080
+	}
+	handle {
+		reverse_proxy dashboard:3000
+	}
 }
 
 {$NDOVU_API_DOMAIN} {
-	import /etc/caddy/site-body-api
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		Cross-Origin-Resource-Policy "same-origin"
+		-Server
+		-X-Powered-By
+	}
+
+	# /metrics atrás de Basic Auth (hash bcrypt — a senha clara vive só
+	# no cofre do monitoramento). /health permanece público (sonda de
+	# uptime).
+	basic_auth {
+		path /metrics
+		ndovu {$NDOVU_METRICS_PASSWORD_HASH}
+	}
+
+	reverse_proxy api:8080
 }

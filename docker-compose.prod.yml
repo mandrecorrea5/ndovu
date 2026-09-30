@@ -3,8 +3,8 @@ services:
     image: caddy:2.9-alpine
     restart: unless-stopped
     environment:
-      NDOVU_APP_DOMAIN: "${NDOVU_APP_DOMAIN-}"
-      NDOVU_API_DOMAIN: "${NDOVU_API_DOMAIN:?Set NDOVU_API_DOMAIN}"
+      NDOVU_APP_DOMAIN: "${NDOVU_APP_DOMAIN-${NDOVU_BOOTSTRAP_IPS-}}"
+      NDOVU_API_DOMAIN: "${NDOVU_API_DOMAIN-${NDOVU_BOOTSTRAP_IPS-}}"
       NDOVU_TLS_EMAIL: "${NDOVU_TLS_EMAIL:?Set NDOVU_TLS_EMAIL}"
       # 1ª subida sem DNS (IP da VPS + hash de senha): publica a VPS por IP
       # com TLS auto-signado e Basic Auth global. Esvaziar ao apontar o
@@ -14,9 +14,9 @@ services:
       # Basic Auth de /metrics (usuário ndovu). Hash bcrypt
       # (caddy hash-password) — a senha clara vive só no cofre do monitoramento.
       NDOVU_METRICS_PASSWORD_HASH: "${NDOVU_METRICS_PASSWORD_HASH:?Set NDOVU_METRICS_PASSWORD_HASH}"
-    # 80/443 desta VPS estão com a stack StayCloud/Traefik (infra GMZ).
-    # O Caddy sobe em 8080/8443; o smoke usa https://IP:8443 (redirect
-    # http→https via 8080).
+    # Nesta VPS o Traefik da stack GMZ ocupa 80/443 — o Caddy sobe em
+    # 8080/8443. Trocar p/ 80/443 quando o Traefik StayCloud for
+    # removido desta máquina.
     ports: !override
       - "8080:80"
       - "8443:443"
