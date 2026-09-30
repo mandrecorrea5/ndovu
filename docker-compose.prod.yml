@@ -14,11 +14,11 @@ services:
       # Basic Auth de /metrics (usuário ndovu). Hash bcrypt
       # (caddy hash-password) — a senha clara vive só no cofre do monitoramento.
       NDOVU_METRICS_PASSWORD_HASH: "${NDOVU_METRICS_PASSWORD_HASH:?Set NDOVU_METRICS_PASSWORD_HASH}"
-    # Nesta VPS o Traefik da stack GMZ ocupa 80/443 — o Caddy sobe em
-    # 8080/8443. Trocar p/ 80/443 quando o Traefik StayCloud for
-    # removido desta máquina.
+    # 80/443 nesta VPS estão com a stack StayCloud/Traefik (GMZ).
+    # Para a 1ª subida sem domínio, só o 8443 é publicado — é por ele
+    # que o smoke e o ingest passam (http→https redirect não funciona
+    # atrás de Traefik).
     ports: !override
-      - "8080:80"
       - "8443:443"
     volumes:
       - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
