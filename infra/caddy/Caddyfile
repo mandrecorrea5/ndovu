@@ -27,10 +27,10 @@
 # Produção com domínio (padrão — ACME automático)
 # ════════════════════════════════════════════════════════════════════
 
-{?NDOVU_APP_DOMAIN} {
+{$NDOVU_APP_DOMAIN} {
 	import /etc/caddy/site-body
 }
 
-{?NDOVU_API_DOMAIN} {
+{$NDOVU_API_DOMAIN} {
 	import /etc/caddy/site-body-api
 }
