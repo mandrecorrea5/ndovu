@@ -1,4 +1,4 @@
-import { clearSession, getToken, redirectToLogin, type SessionUser } from './auth';
+import { clearSession, redirectToLogin, type SessionUser } from './auth';
 import type {
   AlertRule,
   AnomalyDetection,
@@ -59,7 +59,9 @@ export type {
   WebVitalStat,
 } from './types';
 
-const BASE_URL = process.env.NEXT_PUBLIC_NDOVU_API ?? 'http://localhost:8080';
+// Mesma origem: o browser fala com o BFF do Next (/api/*) e o BFF fala com a
+// API Go server-to-server. O token nunca passa pelo browser.
+const BASE_URL = '';
 
 /** Erro tipado da API para a UI diferenciar rede/contrato/servidor. */
 export class ApiError extends Error {
@@ -79,17 +81,13 @@ async function request<T>(
   opts: { params?: Record<string, string | undefined>; body?: unknown; auth?: boolean } = {},
 ): Promise<T> {
   const { params, body, auth = true } = opts;
-  const url = new URL(path, BASE_URL);
+  const url = new URL(bffPath(path), windowLocationOrigin());
   for (const [key, value] of Object.entries(params ?? {})) {
     if (value) url.searchParams.set(key, value);
   }
 
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
-  if (auth) {
-    const token = getToken();
-    if (token) headers.Authorization = `Bearer ${token}`;
-  }
 
   let res: Response;
   try {
@@ -97,6 +95,8 @@ async function request<T>(
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
+      // BFF responde com cache-control: no-store; same-origin já manda cookie.
+      credentials: 'same-origin',
     });
   } catch {
     throw new ApiError('API indisponível — verifique se a Ndovu API está no ar.');
@@ -111,7 +111,22 @@ async function request<T>(
     const payload = await res.json().catch(() => ({}) as { error?: string; details?: string[] });
     throw new ApiError(payload.error ?? `HTTP ${res.status}`, res.status, payload.details);
   }
-  return res.json() as Promise<T>;
+  if (res.status === 204) return undefined as T;
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
+}
+
+/** Mapeia o path da API (legado) para a rota equivalente do BFF (/api/*). */
+function bffPath(path: string): string {
+  // /v1/auth/* já está montado como /api/auth/*
+  const stripped = path.replace(/^\/v1/, '');
+  const base = BASE_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
+  return new URL(`/api${stripped}`, base).toString();
+}
+
+function windowLocationOrigin(): string {
+  if (typeof window !== 'undefined') return window.location.origin;
+  return 'http://localhost:3000';
 }
 
 // ---------------------------------------------------------------------------
@@ -166,8 +181,7 @@ export const api = {
   filterOptions: () => request<FilterOptions>('GET', '/v1/meta/filters'),
 
   // autenticação
-  login: (email: string, password: string) =>
-    request<LoginResult>('POST', '/v1/auth/login', { body: { email, password }, auth: false }),
+
 
   // administração (role admin)
   listUsers: () => request<{ users: AdminUser[] }>('GET', '/v1/admin/users'),
@@ -311,15 +325,13 @@ export const api = {
   // Session snapshots (session replay MVP, Sprint H)
   snapshotMeta: (eventId: string) =>
     request<SnapshotMeta>('GET', `/v1/snapshots/event/${encodeURIComponent(eventId)}`),
-  // URL do HTML — usada como `src` do iframe. O bearer segue via cookie/header
-  // do fetch normal do browser? Não — o iframe faz GET sem Authorization.
-  // Solução: rota separada retorna via cookie de sessão, OU carregamos o HTML
-  // via fetch (com token) e injetamos com srcdoc no iframe.
+  // HTML via BFF: mesma origem → cookie httpOnly vai sozinho; sem token no JS.
   snapshotHTML: (eventId: string) => {
-    const url = new URL(`/v1/snapshots/event/${encodeURIComponent(eventId)}/html`, BASE_URL);
-    return fetch(url.toString(), {
-      headers: { Authorization: `Bearer ${getToken() ?? ''}` },
-    }).then((r) => {
+    const url = new URL(
+      `/api/snapshots/event/${encodeURIComponent(eventId)}/html`,
+      windowLocationOrigin(),
+    );
+    return fetch(url.toString(), { credentials: 'same-origin' }).then((r) => {
       if (!r.ok) throw new ApiError(`HTTP ${r.status}`, r.status);
       return r.text();
     });

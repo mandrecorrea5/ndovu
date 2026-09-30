@@ -65,9 +65,9 @@ Portas expostas pelo `docker-compose.yml`:
 | 30–90 dias | cold | disk S3 (MinIO local) |
 | 90+ dias | — | delete via TTL |
 
-Migração é automática via `TTL ... TO VOLUME`. Para trocar por AWS S3 real em
-produção: edite `infra/clickhouse/storage.xml` mudando `endpoint`,
-`access_key_id`, `secret_access_key`. Nenhuma mudança de código.
+Migração é automática via `TTL ... TO VOLUME`. Em produção, o overlay usa
+`infra/clickhouse/storage-r2.xml` com credenciais injetadas por ambiente e um
+bucket R2 separado. O MinIO permanece apenas no perfil local de desenvolvimento.
 
 **Digest semanal** (opcional): defina `NDOVU_DIGEST_RECIPIENTS` (comma-separated)
 para ativar. Roda no writer aos domingos 20:00 UTC por default; ajustável via
@@ -228,6 +228,8 @@ cd dashboard && npx playwright test       # sobe stack via docker compose; ver d
 - [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md) — decisões e trade-offs.
 - [`docs/TECNICA.md`](docs/TECNICA.md) — endpoints, SDKs, exemplos.
 - [`docs/USO.md`](docs/USO.md) — guia de operação diária.
+- [`docs/DEPLOY-VPS.md`](docs/DEPLOY-VPS.md) — configuração de produção
+  para VPS Docker (hardening de credenciais; ainda não é o runbook completo).
 - [`docs/INTEGRATION.md`](docs/INTEGRATION.md) e [`docs/CONTRACT.md`](docs/CONTRACT.md) — instrumentar um app.
 - [`docs/TESTING.md`](docs/TESTING.md) — plano de testes.
 - [`docs/openshift/`](docs/openshift/) — **plano de deploy no OpenShift**:

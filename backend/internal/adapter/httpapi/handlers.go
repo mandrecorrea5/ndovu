@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/marcoscorrea/ndovu/backend/internal/adapter/clickhouse"
+	"github.com/marcoscorrea/ndovu/backend/internal/config"
 	"github.com/marcoscorrea/ndovu/backend/internal/domain"
 	"github.com/marcoscorrea/ndovu/backend/internal/usecase"
 )
@@ -41,6 +42,7 @@ type Handlers struct {
 	anomalies   *usecase.AnomalyService
 	feedback    *usecase.FeedbackService
 	logger      *slog.Logger
+	cfg         config.Config
 }
 
 // NewHandlers cria o conjunto de handlers da API.
@@ -67,6 +69,7 @@ func NewHandlers(
 	anomalies *usecase.AnomalyService,
 	feedback *usecase.FeedbackService,
 	logger *slog.Logger,
+	cfg config.Config,
 ) *Handlers {
 	return &Handlers{
 		ingest: ingest, query: query, auth: auth, keys: keys, apps: apps,
@@ -75,7 +78,7 @@ func NewHandlers(
 		funnels: funnels, retention: retention, digest: digest, audit: audit,
 		gdpr: gdpr, permissions: permissions, sampling: sampling,
 		snapshots: snapshots, anomalies: anomalies, feedback: feedback,
-		logger: logger,
+		logger: logger, cfg: cfg,
 	}
 }
 

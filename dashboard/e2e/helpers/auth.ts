@@ -15,6 +15,13 @@ export async function loginAs(page: Page, email: string, password: string): Prom
   await page.getByRole('button', { name: /entrar/i }).click();
   // Login redireciona para "/" (Home) ou path definido em `?next`.
   await expect(page).toHaveURL(/\/(\?|$)/, { timeout: 10_000 });
+  // A sessão BFF é o cookie httpOnly — a UI só sabe que está logada quando o
+  // /api/auth/me confirma. Sem essa espera, um teste pode navegar antes da
+  // sessão estar de fato estabelecida.
+  await page.waitForResponse(
+    (res) => res.url().includes('/api/auth/me') && res.status() === 200,
+    { timeout: 10_000 },
+  );
 }
 
 /** Faz logout via UI e confirma redirect pra /login. */

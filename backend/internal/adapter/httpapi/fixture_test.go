@@ -114,6 +114,7 @@ func newFixture(t *testing.T) *testFixture {
 		issueSvc, alertSvc, releaseSvc, sourceMapSvc, savedViewSvc,
 		funnelSvc, retentionSvc, nil /* digest */, auditSvc, gdprSvc,
 		permSvc, samplingSvc, snapshotSvc, anomalySvc, feedbackSvc, logger,
+		config.Config{},
 	)
 
 	// Router real (mesmo do main), com openapi fs vazio (não exercitamos /docs).

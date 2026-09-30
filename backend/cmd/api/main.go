@@ -137,13 +137,17 @@ func run() error {
 	if err := authSvc.EnsureBootstrapAdmin(ctx, cfg.AdminEmail, cfg.AdminPassword); err != nil {
 		return err
 	}
-	if err := keySvc.EnsureBootstrapKey(ctx, cfg.BootstrapIngestKey, "dev"); err != nil {
-		return err
+	if cfg.Environment != "production" {
+		if err := keySvc.EnsureBootstrapKey(ctx, cfg.BootstrapIngestKey, "dev"); err != nil {
+			return err
+		}
+	} else {
+		logger.Info("bootstrap de chave de ingestão desativado em produção")
 	}
 
 	ingestSvc := usecase.NewIngestService(natsstream.NewPublisher(js), logger)
 	querySvc := usecase.NewQueryService(repo).WithFeedbackFallback(ctl)
-	handlers := httpapi.NewHandlers(ingestSvc, querySvc, authSvc, keySvc, appSvc, companySvc, issueSvc, alertSvc, releaseSvc, sourceMapSvc, savedViewSvc, funnelSvc, retentionSvc, digestSvc, auditSvc, gdprSvc, permissionSvc, samplingSvc, snapshotSvc, anomalySvc, feedbackSvc, logger)
+	handlers := httpapi.NewHandlers(ingestSvc, querySvc, authSvc, keySvc, appSvc, companySvc, issueSvc, alertSvc, releaseSvc, sourceMapSvc, savedViewSvc, funnelSvc, retentionSvc, digestSvc, auditSvc, gdprSvc, permissionSvc, samplingSvc, snapshotSvc, anomalySvc, feedbackSvc, logger, cfg)
 	router := httpapi.NewRouter(handlers, cfg, authSvc, keySvc, ctl, ctl, metrics, logger, api.SpecFS)
 
 	srv := &http.Server{

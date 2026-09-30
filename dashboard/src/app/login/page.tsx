@@ -3,8 +3,8 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
 import { Button, Field, Input } from '@/components/form';
-import { api, ApiError } from '@/lib/api';
-import { saveSession } from '@/lib/auth';
+import { ApiError } from '@/lib/api';
+import { login as loginSession } from '@/lib/auth';
 
 function LoginForm() {
   const router = useRouter();
@@ -19,15 +19,10 @@ function LoginForm() {
     setError('');
     setLoading(true);
     try {
-      const result = await api.login(email, password);
-      saveSession(result.token, {
-        id: result.user.id,
-        email: result.user.email,
-        name: result.user.name,
-        role: result.user.role,
-      });
+      await loginSession(email, password);
       const next = params.get('next');
       router.replace(next && next.startsWith('/') ? next : '/');
+      router.refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Falha no login');
     } finally {

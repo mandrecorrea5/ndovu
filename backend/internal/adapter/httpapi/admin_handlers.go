@@ -86,7 +86,9 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
-// PostLogin autentica e devolve o token + usuário.
+// PostLogin autentica e emite a sessão em cookie httpOnly + SameSite=Lax +
+// Secure. O body continua expondo o token para clientes sem browser (SDKs
+// de teste, scripts, e2e via header), mas o browser usa apenas o cookie.
 func (h *Handlers) PostLogin(w http.ResponseWriter, r *http.Request) {
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

@@ -125,6 +125,44 @@ Comunicação entre namespaces por FQDN de Service:
 | bucket S3 | **ObjectBucketClaim** (ODF/NooBaa) ou S3 corporativo externo | substitui o MinIO do compose |
 | SMTP | Relay corporativo (Service externo/ExternalName) | substitui o MailHog do compose |
 
+### Identidade centralizada para as aplicações (em avaliação)
+
+Avaliar um provedor de identidade centralizado para oferecer SSO e MFA às
+aplicações Ndovu e a outros sistemas internos. **Ainda não há decisão de
+produto nem de plataforma.**
+
+O **[ZITADEL](https://github.com/zitadel/zitadel)** é candidato para um piloto
+quando baixo consumo e implementação em Go forem prioridades. É um IdP
+independente do Keycloak, com suporte a OIDC e SAML; não é uma distribuição ou
+substituto drop-in do Keycloak. O projeto é open source sob AGPLv3 e requer
+PostgreSQL. A [referência publicada de 1 CPU e 512 MiB](https://zitadel.com/docs/self-hosting/deploy/overview)
+é para teste, não dimensionamento de produção. Avaliar a licença com jurídico
+antes de adotar, especialmente se houver customização ou distribuição.
+
+O **Keycloak / Red Hat build of Keycloak (RHBK)** continua sendo a alternativa
+quando compatibilidade com o ecossistema Red Hat/OpenShift, suporte comercial
+ou recursos e integrações específicos do Keycloak forem requisitos. Não
+assumir que o RHBK será mais leve que o Keycloak upstream.
+
+No piloto, validar pelo menos:
+
+- OIDC com o dashboard Ndovu e com outras aplicações representativas;
+- MFA requerido (TOTP e/ou WebAuthn/passkeys), recuperação de conta e
+  comportamento de logout;
+- mapeamento de identidade e claims; manter no Ndovu autorização de negócio
+  como company, apps permitidos e papéis, salvo decisão explícita diferente;
+- consumo de CPU/memória sob carga realista, atualizações, backup e restore do
+  banco, TLS, monitoramento e procedimento de acesso administrativo de
+  emergência;
+- impacto de indisponibilidade do IdP: novas autenticações em todas as
+  aplicações integradas podem ser afetadas.
+
+Tratar o IdP como serviço compartilhado, com deployment, persistência,
+segredos, backups e monitoramento próprios. Não compartilhar automaticamente
+o banco de control plane do Ndovu com o IdP; definir base/instância, isolamento
+e política de backup conforme a plataforma escolhida. Promover a escolha para
+arquitetura aprovada somente após o piloto e a revisão de licença/operação.
+
 ## 4. Configuração: o padrão
 
 Regra única: **a imagem é idêntica em dev, hml e prd; só o ConfigMap/Secret muda.**

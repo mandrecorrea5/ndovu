@@ -3,7 +3,13 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { clearSession, getSessionUser, getToken, type SessionUser } from '@/lib/auth';
+import {
+  clearSession,
+  fetchSession,
+  getSessionUser,
+  logout as endSession,
+  type SessionUser,
+} from '@/lib/auth';
 
 // Ícones SVG inline — evita adicionar lucide-react/heroicons como dependência.
 const Icon = {
@@ -122,20 +128,30 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isLogin = pathname.startsWith('/login');
 
   useEffect(() => {
-    const token = getToken();
-    const sessionUser = getSessionUser();
-    if (!isLogin && (!token || !sessionUser)) {
-      const next = encodeURIComponent(pathname);
-      router.replace(`/login?next=${next}`);
+    // Gate client-side é cosmético: a autoridade é o BFF (401 → redirect no
+    // api client). Confirmamos a sessão no /api/auth/me para não mostrar
+    // shell com cache de outro usuário ou sessão já revogada.
+    if (isLogin) {
+      setReady(true);
       return;
     }
-    setUser(sessionUser);
-    try {
-      setCollapsed(localStorage.getItem(COLLAPSED_KEY) === '1');
-    } catch {
-      /* SSR/privado */
-    }
-    setReady(true);
+    let cancelled = false;
+    (async () => {
+      const cached = getSessionUser();
+      if (cached && !cancelled) setUser(cached);
+      const fresh = await fetchSession();
+      if (cancelled) return;
+      if (!fresh) {
+        const next = encodeURIComponent(pathname);
+        router.replace(`/login?next=${next}`);
+        return;
+      }
+      setUser(fresh);
+      setReady(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [isLogin, pathname, router]);
 
   const toggleCollapsed = () => {
@@ -150,7 +166,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     });
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await endSession();
     clearSession();
     router.replace('/login');
   };
@@ -264,7 +281,7 @@ function UserMenu({
 }: {
   user: SessionUser | null;
   collapsed: boolean;
-  onLogout: () => void;
+  onLogout: () => void | Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);

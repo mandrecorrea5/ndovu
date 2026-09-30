@@ -28,7 +28,7 @@ func main() {
 }
 
 func run() error {
-	cfg, err := config.Load()
+	cfg, err := config.LoadFor("writer")
 	if err != nil {
 		return err
 	}

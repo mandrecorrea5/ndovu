@@ -190,19 +190,24 @@ func requireAnyRole(roles ...domain.Role) func(http.Handler) http.Handler {
 	}
 }
 
-// cors libera as origens configuradas (dashboard e SDKs em browser).
+// cors libera as origens configuradas (dashboard e SDKs em browser). Usa
+// wildcard no header de request quando a origem pedida está na allowlist —
+// necessário para credenciais (cookies) cross-origin funcionarem; o
+// wildcard literal "*" nunca é aceito junto de credenciais.
 func cors(origins string) func(http.Handler) http.Handler {
-	allowAll := origins == "*" || origins == ""
 	allowed := map[string]bool{}
 	for _, o := range strings.Split(origins, ",") {
-		allowed[strings.TrimSpace(o)] = true
+		if o = strings.TrimSpace(o); o != "" {
+			allowed[o] = true
+		}
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
-			if origin != "" && (allowAll || allowed[origin]) {
+			if origin != "" && allowed[origin] {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
 				w.Header().Set("Vary", "Origin")
+				w.Header().Set("Access-Control-Allow-Credentials", "true")
 				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
 				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Api-Key, Authorization")
 				w.Header().Set("Access-Control-Max-Age", "600")

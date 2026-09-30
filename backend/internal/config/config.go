@@ -2,6 +2,8 @@
 package config
 
 import (
+	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -10,6 +12,7 @@ import (
 
 // Config é a configuração completa da API e do writer.
 type Config struct {
+	Environment     string
 	Port            int
 	CORSOrigins     string // "*" ou lista separada por vírgula
 	MaxBodyBytes    int64
@@ -57,13 +60,13 @@ type Config struct {
 
 	// Mailer (digest semanal). Provider "" (auto) escolhe SendGrid se a chave
 	// estiver setada, senão SMTP, senão noop (loga sem enviar).
-	MailerProvider   string
-	SMTPHost         string
-	SMTPPort         int
-	SMTPUser         string
-	SMTPPassword     string
-	SMTPFrom         string
-	SendGridAPIKey   string
+	MailerProvider string
+	SMTPHost       string
+	SMTPPort       int
+	SMTPUser       string
+	SMTPPassword   string
+	SMTPFrom       string
+	SendGridAPIKey string
 
 	// Digest: destinatários (comma-separated) + agendamento (weekday + hora UTC).
 	// URL do dashboard entra nos links do e-mail.
@@ -73,11 +76,29 @@ type Config struct {
 	DigestHourUTC    int
 	DigestMinuteUTC  int
 	DigestTickEvery  time.Duration
+
+	// NDOVU_SESSION_ENC_KEY: chave usada pelo BFF do dashboard para cifrar
+	// (AES-GCM) o JWT no cookie httpOnly de sessão. A API não consome — só
+	// exige presença/força em produção para fail-fast no boot.
+	SessionEncKey string
 }
 
-// Load lê o ambiente e aplica defaults sãos para a POC.
+// Load lê o ambiente para a API e aplica defaults de desenvolvimento. Em
+// produção, exige credenciais explícitas e rejeita valores/defaults inseguros.
 func Load() (Config, error) {
+	return LoadFor("api")
+}
+
+// LoadFor carrega e valida a configuração necessária para um componente.
+// O writer não recebe nem valida segredos exclusivos da API.
+func LoadFor(component string) (Config, error) {
+	environment := strings.ToLower(envStr("NDOVU_ENV", "development"))
+	bootstrapIngestKey := envStr("NDOVU_BOOTSTRAP_INGEST_KEY", "dev-ingest-key")
+	if environment == "production" {
+		bootstrapIngestKey = ""
+	}
 	cfg := Config{
+		Environment:     environment,
 		Port:            envInt("NDOVU_PORT", 8080),
 		CORSOrigins:     envStr("NDOVU_CORS_ORIGINS", "*"),
 		MaxBodyBytes:    int64(envInt("NDOVU_MAX_BODY_BYTES", 1<<20)), // 1 MB
@@ -99,7 +120,7 @@ func Load() (Config, error) {
 		AuthTokenTTL:       time.Duration(envInt("NDOVU_AUTH_TOKEN_TTL_HOURS", 8)) * time.Hour,
 		AdminEmail:         envStr("NDOVU_ADMIN_EMAIL", "admin@ndovu.local"),
 		AdminPassword:      envStr("NDOVU_ADMIN_PASSWORD", "admin12345"),
-		BootstrapIngestKey: envStr("NDOVU_BOOTSTRAP_INGEST_KEY", "dev-ingest-key"),
+		BootstrapIngestKey: bootstrapIngestKey,
 		KeyCacheTTL:        time.Duration(envInt("NDOVU_KEY_CACHE_TTL_SECONDS", 30)) * time.Second,
 
 		IngestRateRPS:   float64(envInt("NDOVU_INGEST_RATE_RPS", 50)),
@@ -127,8 +148,75 @@ func Load() (Config, error) {
 		DigestHourUTC:    envInt("NDOVU_DIGEST_HOUR_UTC", 20),
 		DigestMinuteUTC:  envInt("NDOVU_DIGEST_MINUTE_UTC", 0),
 		DigestTickEvery:  time.Duration(envInt("NDOVU_DIGEST_TICK_SECONDS", 300)) * time.Second,
+
+		SessionEncKey: envStr("NDOVU_SESSION_ENC_KEY", ""),
+	}
+	if err := validate(cfg, component); err != nil {
+		return Config{}, err
 	}
 	return cfg, nil
+}
+
+func validate(cfg Config, component string) error {
+	if component != "api" && component != "writer" {
+		return fmt.Errorf("componente de configuração inválido: %s", component)
+	}
+	if cfg.Environment != "development" && cfg.Environment != "test" && cfg.Environment != "production" {
+		return fmt.Errorf("NDOVU_ENV inválido: use development, test ou production")
+	}
+	if cfg.Environment != "production" {
+		return nil
+	}
+
+	var missing []string
+	require := func(ok bool, name string) {
+		if !ok {
+			missing = append(missing, name)
+		}
+	}
+	require(cfg.ClickHousePassword != "" && cfg.ClickHousePassword != "ndovu",
+		"NDOVU_CLICKHOUSE_PASSWORD")
+
+	parsedDB, err := url.Parse(cfg.PostgresURL)
+	if err != nil || (parsedDB.Scheme != "postgres" && parsedDB.Scheme != "postgresql") || parsedDB.User == nil {
+		require(false, "NDOVU_POSTGRES_URL com usuário e senha explícitos")
+	} else {
+		dbPassword, hasPassword := parsedDB.User.Password()
+		require(hasPassword && dbPassword != "" && dbPassword != "ndovu",
+			"senha não padrão em NDOVU_POSTGRES_URL")
+	}
+
+	if component == "api" {
+		require(len(cfg.AuthSecret) >= 32 && cfg.AuthSecret != "dev-secret-troque-em-producao",
+			"NDOVU_AUTH_SECRET (mínimo 32 caracteres)")
+		require(cfg.AdminEmail != "" && cfg.AdminEmail != "admin@ndovu.local",
+			"NDOVU_ADMIN_EMAIL")
+		require(len(cfg.AdminPassword) >= 12 && cfg.AdminPassword != "admin12345",
+			"NDOVU_ADMIN_PASSWORD (mínimo 12 caracteres)")
+
+		origins := strings.Split(cfg.CORSOrigins, ",")
+		require(strings.TrimSpace(cfg.CORSOrigins) != "" && !strings.Contains(cfg.CORSOrigins, "*"),
+			"NDOVU_CORS_ORIGINS sem wildcard")
+		for _, origin := range origins {
+			u, err := url.Parse(strings.TrimSpace(origin))
+			if err != nil || u.Scheme != "https" || u.Host == "" || (u.Path != "" && u.Path != "/") {
+				require(false, "origens HTTPS válidas em NDOVU_CORS_ORIGINS")
+				break
+			}
+		}
+
+		require(cfg.S3Endpoint != "" && cfg.S3AccessKey != "" && cfg.S3SecretKey != "" &&
+			cfg.SnapshotBucket != "" && cfg.S3UseSSL,
+			"NDOVU_S3_ENDPOINT, NDOVU_S3_ACCESS_KEY, NDOVU_S3_SECRET_KEY, NDOVU_S3_USE_SSL=true e NDOVU_SNAPSHOT_BUCKET")
+		// Chave de cifra da sessão (BFF do dashboard). A API não usa, mas a
+		// presença evita subir produção sem o segredo do cookie httpOnly.
+		require(len(cfg.SessionEncKey) >= 32,
+			"NDOVU_SESSION_ENC_KEY (mínimo 32 caracteres — openssl rand -hex 16)")
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("configuração de produção inválida: %s", strings.Join(missing, "; "))
+	}
+	return nil
 }
 
 // splitCSV divide "a@x.com, b@y.com" em []string sem vazios/espaços.

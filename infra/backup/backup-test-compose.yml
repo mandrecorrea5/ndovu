@@ -1,0 +1,39 @@
+services:
+  postgres:
+    environment:
+      POSTGRES_USER: backup_test
+      POSTGRES_PASSWORD: backup_test_only
+      POSTGRES_DB: backup_test
+    volumes: !reset []
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U backup_test -d backup_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  postgres-restore-test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: backup_test
+      POSTGRES_PASSWORD: backup_test_only
+      POSTGRES_DB: backup_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U backup_test -d backup_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  postgres-backup:
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: backup_test
+      PGPASSWORD: backup_test_only
+      PGDATABASE: backup_test
+    depends_on:
+      postgres-restore-test:
+        condition: service_healthy

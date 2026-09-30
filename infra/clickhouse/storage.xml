@@ -5,13 +5,13 @@
   Disks:
     * default (`hot`) — dados novos vivem aqui (SSD/volume rapido).
     * warm — parts mais antigas (7d+) migram automaticamente via TTL.
-    * cold — S3-compatible. Localmente aponta pro MinIO; em prod, basta
-      trocar endpoint/access_key para AWS S3 real (mesmo protocolo).
+    * cold — S3-compatible. Este arquivo é usado no desenvolvimento local e
+      aponta para o MinIO; o perfil de produção monta storage-r2.xml.
 
   Policy `tiered`:
     * volume `default` (hot) → default disk (chdata em /var/lib/clickhouse)
     * volume `warm`          → volume /warm (chdata-warm, disco separado)
-    * volume `cold`          → disk s3 (bucket ndovu-cold no MinIO)
+    * volume `cold`          → disk s3 (bucket ndovu-cold no MinIO local)
 
   Como aplicar em uma tabela (via schema.sql / ALTER):
     ALTER TABLE trace_events MODIFY SETTING storage_policy = 'tiered';

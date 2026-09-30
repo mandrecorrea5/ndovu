@@ -165,7 +165,14 @@ services:
       context: ./dashboard
       args:
         # URL da API vista PELO BROWSER do usuário (não pela rede interna do compose)
-        NEXT_PUBLIC_NDOVU_API: ${NEXT_PUBLIC_NDOVU_API:-http://localhost:18081}
+        NEXT_PUBLIC_NDOVU_API: http://localhost:18081
+    environment:
+      # Sessão do BFF: cookie httpOnly + AES-GCM; deriva de NDOVU_AUTH_SECRET
+      # quando ausente. Em dev com valores fracos, mantenha explícito.
+      NDOVU_SESSION_ENC_KEY: ${NDOVU_SESSION_ENC_KEY:-dev-session-key-change-me-32chars!!}
+      # URL interna usada pelo BFF para falar com a API (server-to-server).
+      NDOVU_API: http://api:8080
+      HOSTNAME: "0.0.0.0"
     ports:
       - "13000:3000"
     depends_on:
