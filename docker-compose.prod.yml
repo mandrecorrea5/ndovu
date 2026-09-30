@@ -164,8 +164,11 @@ services:
       NDOVU_API: "http://api:8080"
       HOSTNAME: "0.0.0.0"
     depends_on:
+      # API distroless não tem healthcheck (ver RUNBOOK-DEPLOY); a ordem
+      # api→dashboard→caddy continua garantida pelo healthcheck do
+      # dashboard (compose 5.x exige o healthcheck para service_healthy).
       api:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/login"]
       interval: 15s
