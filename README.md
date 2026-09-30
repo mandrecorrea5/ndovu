@@ -232,6 +232,9 @@ cd dashboard && npx playwright test       # sobe stack via docker compose; ver d
   para VPS Docker (segredos, rede/TLS, backup e validação).
 - [`docs/RUNBOOK-DEPLOY.md`](docs/RUNBOOK-DEPLOY.md) — passo a passo de
   deploy, update e rollback (bootstrap incluído).
+- [`docs/CAPACITY-VPS.md`](docs/CAPACITY-VPS.md) — dimensionamento da VPS
+  de produção (4 vCPU / 8 GB / 200 GB): limites por serviço, janela do
+  stream, orçamento de disco e gatilhos de upgrade.
 - [`platform/runbooks/`](platform/runbooks/) — operação da camada de dados
   (disco hot, backlog JetStream, restore PG/CH, cold tier, expansão).
 - [`docs/INTEGRATION.md`](docs/INTEGRATION.md) e [`docs/CONTRACT.md`](docs/CONTRACT.md) — instrumentar um app.

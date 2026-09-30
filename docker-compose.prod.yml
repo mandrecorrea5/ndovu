@@ -46,7 +46,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: 768M
+          memory: 1G
+          cpus: "1"
 
   clickhouse:
     restart: unless-stopped
@@ -55,6 +56,9 @@ services:
       - chdata:/var/lib/clickhouse
       - chdata-warm:/warm
       - ./infra/clickhouse/storage-r2.xml:/etc/clickhouse-server/config.d/storage.xml:ro
+      # Teto de 1,5 GB por consulta (docs/CAPACITY-VPS.md §2.1): estourar o
+      # limite do container mataria a stack inteira; a consulta falha antes.
+      - ./infra/clickhouse/tuning-prod.xml:/etc/clickhouse-server/config.d/tuning.xml:ro
     environment:
       NDOVU_CLICKHOUSE_S3_ENDPOINT: "${NDOVU_CLICKHOUSE_S3_ENDPOINT:?Set NDOVU_CLICKHOUSE_S3_ENDPOINT}"
       NDOVU_CLICKHOUSE_S3_ACCESS_KEY: "${NDOVU_CLICKHOUSE_S3_ACCESS_KEY:?Set NDOVU_CLICKHOUSE_S3_ACCESS_KEY}"
@@ -62,11 +66,14 @@ services:
       CLICKHOUSE_DB: "${CLICKHOUSE_DB:?Set CLICKHOUSE_DB}"
       CLICKHOUSE_USER: "${CLICKHOUSE_USER:?Set CLICKHOUSE_USER}"
       CLICKHOUSE_PASSWORD: "${CLICKHOUSE_PASSWORD:?Set CLICKHOUSE_PASSWORD}"
-    # ClickHouse + cold tier no R2 + agregações: 2 GB é o piso realista.
+    # ClickHouse + cold tier no R2 + agregações. 4 GB com teto de 1,5 GB por
+    # consulta (tuning-prod.xml): a soma de limites cabe nos 8 GB da VPS —
+    # ver docs/CAPACITY-VPS.md §2.
     deploy:
       resources:
         limits:
-          memory: 2560M
+          memory: 4G
+          cpus: "3"
 
   # API e writer: a única fonte de verdade de saúde é /health (que valida as
   # conexões). Sem ele, um contêiner "up" com DB fora seria tratado como sábio.
@@ -90,6 +97,10 @@ services:
       NDOVU_S3_SECRET_KEY: "${NDOVU_S3_SECRET_KEY:?Set NDOVU_S3_SECRET_KEY}"
       NDOVU_S3_USE_SSL: "true"
       NDOVU_SNAPSHOT_BUCKET: "${NDOVU_SNAPSHOT_BUCKET:?Set NDOVU_SNAPSHOT_BUCKET}"
+      # VPS 8 GB (docs/CAPACITY-VPS.md §4): 12h de stream. ClickHouse fora
+      # por MAIS que isso = descarte dos mais antigos. Monitorar idade do
+      # backlog (platform/runbooks/jetstream-backlog.md).
+      NDOVU_STREAM_MAX_AGE_HOURS: "12"
     # Imagem distroless (nonroot): sem shell, sem wget/curl — não há
     # healthcheck possível dentro do container. Liveness vem do restart
     # policy + process exit; readiness (/health) é consumida pelo
@@ -97,7 +108,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1G
+          cpus: "1.5"
 
   writer:
     restart: unless-stopped
@@ -110,6 +122,9 @@ services:
       NDOVU_S3_ENDPOINT: ""
       NDOVU_S3_ACCESS_KEY: ""
       NDOVU_S3_SECRET_KEY: ""
+      # Mesmo teto de idade do stream — api e writer devem ver a mesma janela
+      # (docs/CAPACITY-VPS.md §4).
+      NDOVU_STREAM_MAX_AGE_HOURS: "12"
     # O writer depende de NATS para consumir; sem ele o writer fica ocioso e
     # a fila incha sem ninguém reclamar. No compose base a dependência não
     # existia — em produção isso é obrigatório.
@@ -123,7 +138,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1G
+          cpus: "1"
 
   dashboard:
     restart: unless-stopped
@@ -153,13 +169,20 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 768M
+          cpus: "1"
 
   nats:
     restart: unless-stopped
     ports: !reset []
     # Monitor 8222 (healthz) já é definido no compose base; fica restrito à
     # rede interna do compose (nenhum mapeamento publicado no prod).
+    # 1 GB limita a janela do JetStream (docs/CAPACITY-VPS.md §2).
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "0.5"
 
   mailhog:
     ports: !reset []
