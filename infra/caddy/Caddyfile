@@ -18,7 +18,7 @@
 # única fonte de cabeçalho de server.)
 {$NDOVU_APP_DOMAIN} {
 	{$NDOVU_BOOTSTRAP_IPS:tls internal}
-	{$NDOVU_BOOTSTRAP_IPS:basic_auth}{
+	{$NDOVU_BOOTSTRAP_IPS:basic_auth {
 		{$NDOVU_BOOTSTRAP_IPS:bootstrap {$NDOVU_BOOTSTRAP_PASSWORD_HASH}}
 	}
 	header {
