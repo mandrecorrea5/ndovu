@@ -1,6 +1,13 @@
 {
 	email {$NDOVU_TLS_EMAIL}
 	admin localhost:2019
+
+	# 1ª subida sem DNS (hosts = IP/hostname sem registro): desliga
+	# ACME e a confiança automática; certs sempre self-signed
+	# (tls internal). Domínio real: NDOVU_AUTO_HTTPS=false continua ok
+	# e tls internal também vale p/ dev local.
+	{$NDOVU_AUTO_HTTPS:auto_https off}
+	{$NDOVU_TRUST:skip_install_trust}
 }
 
 # ════════════════════════════════════════════════════════════════════
