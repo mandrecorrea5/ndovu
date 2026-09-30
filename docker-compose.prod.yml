@@ -14,10 +14,12 @@ services:
       # Basic Auth de /metrics (usuário ndovu). Hash bcrypt
       # (caddy hash-password) — a senha clara vive só no cofre do monitoramento.
       NDOVU_METRICS_PASSWORD_HASH: "${NDOVU_METRICS_PASSWORD_HASH:?Set NDOVU_METRICS_PASSWORD_HASH}"
-    ports:
-      # Sem NDOVU_BOOTSTRAP_IPS os sites de domínio atendem 80/443 normalmente.
-      - "80:80"
-      - "443:443"
+    # 80/443 desta VPS estão com a stack StayCloud/Traefik (infra GMZ).
+    # O Caddy sobe em 8080/8443; o smoke usa https://IP:8443 (redirect
+    # http→https via 8080).
+    ports: !override
+      - "8080:80"
+      - "8443:443"
     volumes:
       - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ./infra/caddy/bootstrap-body:/etc/caddy/bootstrap-body:ro
