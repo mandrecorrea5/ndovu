@@ -1,0 +1,66 @@
+<?xml version="1.0"?>
+<!--
+  Ndovu — retencao em camadas (Fase 3 sprints F.1 e F.2).
+
+  Disks:
+    * default (`hot`) — dados novos vivem aqui (SSD/volume rapido).
+    * warm — parts mais antigas (7d+) migram automaticamente via TTL.
+    * cold — S3-compatible. Localmente aponta pro MinIO; em prod, basta
+      trocar endpoint/access_key para AWS S3 real (mesmo protocolo).
+
+  Policy `tiered`:
+    * volume `default` (hot) → default disk (chdata em /var/lib/clickhouse)
+    * volume `warm`          → volume /warm (chdata-warm, disco separado)
+    * volume `cold`          → disk s3 (bucket ndovu-cold no MinIO)
+
+  Como aplicar em uma tabela (via schema.sql / ALTER):
+    ALTER TABLE trace_events MODIFY SETTING storage_policy = 'tiered';
+    ALTER TABLE trace_events MODIFY TTL
+      toDateTime(occurred_at) + INTERVAL 7  DAY TO VOLUME 'warm',
+      toDateTime(occurred_at) + INTERVAL 30 DAY TO VOLUME 'cold',
+      toDateTime(occurred_at) + INTERVAL 90 DAY DELETE;
+-->
+<clickhouse>
+  <storage_configuration>
+    <disks>
+      <warm>
+        <path>/warm/</path>
+      </warm>
+
+      <cold>
+        <type>s3</type>
+        <endpoint>http://minio:9000/ndovu-cold/</endpoint>
+        <access_key_id>ndovu</access_key_id>
+        <secret_access_key>ndovu-secret</secret_access_key>
+        <!-- Region e obrigatorio no protocolo S3; MinIO ignora o valor. -->
+        <region>us-east-1</region>
+        <!-- Metadata (parts, marks) ficam locais mesmo em disk S3;
+             so os data files vao pro bucket. -->
+        <metadata_path>/var/lib/clickhouse/disks/cold/</metadata_path>
+      </cold>
+    </disks>
+
+    <policies>
+      <tiered>
+        <volumes>
+          <!-- Nome do primeiro volume DEVE ser `default` para que o ClickHouse
+               aceite trocar a policy antiga sem exigir migracao de parts. -->
+          <default>
+            <disk>default</disk>
+          </default>
+          <warm>
+            <disk>warm</disk>
+          </warm>
+          <cold>
+            <disk>cold</disk>
+            <!-- perform_ttl_move_on_insert = false evita mandar dados
+                 recem-inseridos direto pro cold se a TTL ja venceu.
+                 Preferimos aguardar merges naturais (amortiza network I/O). -->
+            <perform_ttl_move_on_insert>false</perform_ttl_move_on_insert>
+          </cold>
+        </volumes>
+        <move_factor>0.1</move_factor>
+      </tiered>
+    </policies>
+  </storage_configuration>
+</clickhouse>

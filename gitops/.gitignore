@@ -1,0 +1,12 @@
+# Saída de `kustomize build` e segredos decifrados — nunca versionar
+*.rendered.yaml
+*-decrypted.yaml
+secrets.local/
+
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+tmp/
+*.tmp

@@ -1,0 +1,33 @@
+# Env / segredos
+.env
+.env.local
+.env.*.local
+
+# Dependências e build
+node_modules/
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+
+# Playwright — reports, traces, screenshots (regen a cada run)
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/
+
+# Logs
+*.log
+logs/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Temporários
+tmp/
+*.tmp

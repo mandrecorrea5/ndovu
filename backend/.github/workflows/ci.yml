@@ -1,0 +1,61 @@
+# Pipeline do ndovu-backend.
+#
+# Herdada do monorepo e ajustada para este repositório (sem working-directory,
+# Go 1.25 conforme go.mod, testes de integração habilitados).
+#
+# ATENÇÃO: se o host canônico for o GitLab/Gitea corporativo em vez do GitHub,
+# este arquivo precisa ser traduzido para o formato daquele runner. As etapas
+# e a ordem permanecem as mesmas.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    name: Build e testes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache-dependency-path: go.sum
+      - name: Download deps
+        run: go mod download
+      - name: Vet
+        run: go vet ./...
+      - name: Build
+        run: go build ./...
+      - name: Testes unitários
+        run: go test -race -count=1 ./...
+
+  integration:
+    name: Testes de integração (testcontainers)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache-dependency-path: go.sum
+      # Sobe Postgres, ClickHouse e MinIO reais via testcontainers.
+      - name: Testes de integração
+        run: go test -tags=integration -count=1 ./...
+
+  image:
+    name: Imagem
+    runs-on: ubuntu-latest
+    needs: [build, integration]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      # Uma imagem, dois entrypoints: /ndovu-api (default) e /ndovu-writer.
+      # A tag é o SHA do commit — imutável, nunca :latest.
+      - name: Build da imagem
+        run: docker build -t ndovu-backend:${GITHUB_SHA::7} .
+      # TODO: login no registry interno + push + scan de vulnerabilidade.
+      # A promoção acontece por PR no repositório ndovu-gitops, alterando a
+      # tag no overlay do ambiente.

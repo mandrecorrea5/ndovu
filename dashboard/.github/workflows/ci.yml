@@ -1,0 +1,69 @@
+# Pipeline do ndovu-dashboard.
+#
+# ATENÇÃO: se o host canônico for o GitLab/Gitea corporativo em vez do GitHub,
+# traduza para o formato daquele runner — as etapas permanecem as mesmas.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    name: Typecheck e build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Build
+        run: npm run build
+
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Playwright browsers
+        run: npx playwright install --with-deps chromium
+      # Os specs precisam de uma API real. Suba a stack do ndovu-backend
+      # (dev/compose.yml daquele repositório) ou aponte para o ambiente de dev.
+      # Sem isto os testes ficam apenas locais e apodrecem sem ninguém ver.
+      - name: E2E
+        env:
+          NEXT_PUBLIC_NDOVU_API: ${{ vars.NDOVU_API_DEV }}
+        run: npx playwright test
+
+  image:
+    name: Imagem
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.ref == 'refs/heads/main'
+    strategy:
+      # A URL da API é embutida em build time (ARG do Dockerfile), então a
+      # imagem é específica de ambiente e a tag carrega o sufixo. É dívida
+      # técnica rastreada no README — a correção é config em runtime.
+      matrix:
+        env: [dev, hml, prd]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build da imagem
+        run: |
+          docker build \
+            --build-arg NEXT_PUBLIC_NDOVU_API=${{ vars[format('NDOVU_API_{0}', matrix.env)] }} \
+            -t ndovu-dashboard:${GITHUB_SHA::7}-${{ matrix.env }} .
+      # TODO: login no registry interno + push + scan.

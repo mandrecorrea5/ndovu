@@ -145,9 +145,6 @@ func subjectToken(app string) string {
 // Consumer (lado do writer)
 // ---------------------------------------------------------------------------
 
-// Handler processa um conjunto de lotes; erro => nack (reentrega).
-type Handler func(ctx context.Context, batches []domain.IngestBatch) error
-
 // Consumer é o pull consumer durável do writer.
 type Consumer struct {
 	consumer  jetstream.Consumer
@@ -174,7 +171,7 @@ func NewConsumer(ctx context.Context, js jetstream.JetStream, batchSize int, max
 
 // Run consome em loop até o contexto encerrar: busca até batchSize mensagens
 // (esperando no máximo maxWait), entrega ao handler e dá ack em caso de sucesso.
-func (c *Consumer) Run(ctx context.Context, handle Handler) error {
+func (c *Consumer) Run(ctx context.Context, handle func(ctx context.Context, batches []domain.IngestBatch) error) error {
 	for {
 		if err := ctx.Err(); err != nil {
 			return nil

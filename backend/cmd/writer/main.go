@@ -10,12 +10,14 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/marcoscorrea/ndovu/backend/internal/adapter/clickhouse"
 	"github.com/marcoscorrea/ndovu/backend/internal/adapter/ctlpostgres"
-	"github.com/marcoscorrea/ndovu/backend/internal/adapter/natsstream"
+	"github.com/marcoscorrea/ndovu/backend/internal/adapter/stream"
 	"github.com/marcoscorrea/ndovu/backend/internal/config"
+	"github.com/marcoscorrea/ndovu/backend/internal/domain"
 	"github.com/marcoscorrea/ndovu/backend/internal/platform"
 	"github.com/marcoscorrea/ndovu/backend/internal/usecase"
 )
@@ -51,22 +53,35 @@ func run() error {
 		return err
 	}
 
-	nc, err := natsstream.Connect(cfg.NatsURL)
+	// Buffer de ingestão — backend selecionado por NDOVU_STREAM_BACKEND
+	// (nats | kafka). O consumer drena lotes e o DeadLetter reencaminha os
+	// rejeitados pelo armazém.
+	streamRT, err := stream.New(ctx, stream.Options{
+		Backend:              stream.Backend(cfg.StreamBackend),
+		NatsURL:              cfg.NatsURL,
+		NatsMaxAge:           cfg.StreamMaxAge,
+		WriterBatch:          cfg.WriterBatch,
+		WriterMaxWait:        cfg.WriterMaxWait,
+		KafkaBrokers:         splitCSV(cfg.KafkaBrokers),
+		KafkaEventsTopic:     cfg.KafkaEventsTopic,
+		KafkaDLQTopic:        cfg.KafkaDLQTopic,
+		KafkaConsumerGroup:   cfg.KafkaConsumerGroup,
+		KafkaPartitions:      cfg.KafkaPartitions,
+		KafkaReplication:     cfg.KafkaReplication,
+		KafkaRetention:       cfg.KafkaRetention,
+		KafkaMaxPoll:         cfg.KafkaMaxPoll,
+		KafkaFetchMaxWait:    cfg.KafkaFetchMaxWait,
+		RabbitMQURL:          cfg.RabbitMQURL,
+		RabbitMQEventsQueue:  cfg.RabbitMQEventsQueue,
+		RabbitMQDLQQueue:     cfg.RabbitMQDLQQueue,
+		RabbitMQConsumerName: cfg.RabbitMQConsumerName,
+	}, logger)
 	if err != nil {
-		return fmt.Errorf("conectando ao NATS: %w", err)
+		return fmt.Errorf("inicializando buffer de ingestão: %w", err)
 	}
-	defer nc.Close()
-	js, err := natsstream.EnsureStream(ctx, nc, cfg.StreamMaxAge)
-	if err != nil {
-		return err
-	}
-	consumer, err := natsstream.NewConsumer(ctx, js, cfg.WriterBatch, cfg.WriterMaxWait, logger)
-	if err != nil {
-		return err
-	}
+	defer streamRT.Close()
 
-	publisher := natsstream.NewPublisher(js) // usado como DLQ de lotes rejeitados
-	writeSvc := usecase.NewWriteService(repo, publisher, logger)
+	writeSvc := usecase.NewWriteService(repo, dlqSink{streamRT}, logger)
 
 	// Sampling adaptativo (Sprint G): filtra lotes antes de persistir.
 	// Requer control plane. Se estiver fora, WriteService segue sem sampling
@@ -113,8 +128,30 @@ func run() error {
 	}
 
 	logger.Info("ndovu-writer consumindo",
-		"stream", natsstream.StreamName,
+		"backend", cfg.StreamBackend,
 		"batch", cfg.WriterBatch,
 	)
-	return consumer.Run(ctx, writeSvc.HandleBatches)
+	return streamRT.Consumer.Run(ctx, writeSvc.HandleBatches)
+}
+
+// dlqSink adapta o DeadLetter do Runtime à interface usecase.DeadLetterSink.
+type dlqSink struct{ rt *stream.Runtime }
+
+func (d dlqSink) DeadLetter(ctx context.Context, batch domain.IngestBatch, reason string) error {
+	return d.rt.DeadLetter(ctx, batch, reason)
+}
+
+// splitCSV divide "a,b,c" em []string sem vazios/espaços (brokers).
+func splitCSV(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := parts[:0]
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }

@@ -1,0 +1,263 @@
+# Stack de desenvolvimento do ndovu-backend.
+#
+#   docker compose -f dev/compose.yml up --build
+#
+# Sobe a infraestrutura (Postgres, ClickHouse, NATS, MinIO, MailHog) e os dois
+# binários deste repositório. O dashboard NÃO está aqui: ele vive no repositório
+# ndovu-dashboard. Para tê-lo no fluxo local, use o perfil `ui` (imagem
+# publicada) ou rode `npm run dev` naquele repositório apontando para :18081.
+#
+#   docker compose -f dev/compose.yml --profile ui up
+#
+# Nada neste arquivo vale para OpenShift — lá a configuração vem de
+# ConfigMaps/Secrets e a camada de dados vem do repositório ndovu-platform.
+
+name: ndovu-backend
+
+x-app-env: &app-env
+  NDOVU_CLICKHOUSE_ADDR: clickhouse:9000
+  NDOVU_CLICKHOUSE_DB: ${CLICKHOUSE_DB:-ndovu}
+  NDOVU_CLICKHOUSE_USER: ${CLICKHOUSE_USER:-ndovu}
+  NDOVU_CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-ndovu}
+  NDOVU_STREAM_BACKEND: ${NDOVU_STREAM_BACKEND:-nats}
+  NDOVU_NATS_URL: nats://nats:4222
+  NDOVU_KAFKA_BROKERS: ${NDOVU_KAFKA_BROKERS:-redpanda:9092}
+  NDOVU_KAFKA_EVENTS_TOPIC: ${NDOVU_KAFKA_EVENTS_TOPIC:-ndovu.events}
+  NDOVU_KAFKA_DLQ_TOPIC: ${NDOVU_KAFKA_DLQ_TOPIC:-ndovu.dlq}
+  NDOVU_KAFKA_CONSUMER_GROUP: ${NDOVU_KAFKA_CONSUMER_GROUP:-ndovu-writer}
+  NDOVU_KAFKA_PARTITIONS: ${NDOVU_KAFKA_PARTITIONS:-4}
+  NDOVU_KAFKA_REPLICATION_FACTOR: ${NDOVU_KAFKA_REPLICATION_FACTOR:-1}
+  NDOVU_KAFKA_RETENTION_HOURS: ${NDOVU_KAFKA_RETENTION_HOURS:-48}
+  NDOVU_KAFKA_MAX_POLL_RECORDS: ${NDOVU_KAFKA_MAX_POLL_RECORDS:-64}
+  NDOVU_KAFKA_FETCH_MAX_WAIT_MS: ${NDOVU_KAFKA_FETCH_MAX_WAIT_MS:-1000}
+  NDOVU_RABBITMQ_URL: ${NDOVU_RABBITMQ_URL:-amqp://ndovu:ndovu@rabbitmq:5672/}
+  NDOVU_RABBITMQ_EVENTS_QUEUE: ${NDOVU_RABBITMQ_EVENTS_QUEUE:-ndovu.events}
+  NDOVU_RABBITMQ_DLQ_QUEUE: ${NDOVU_RABBITMQ_DLQ_QUEUE:-ndovu.dlq}
+  NDOVU_RABBITMQ_CONSUMER_NAME: ${NDOVU_RABBITMQ_CONSUMER_NAME:-ndovu-writer}
+  NDOVU_LOG_LEVEL: ${NDOVU_LOG_LEVEL:-info}
+  NDOVU_POSTGRES_URL: postgres://${POSTGRES_USER:-ndovu}:${POSTGRES_PASSWORD:-ndovu}@postgres:5432/${POSTGRES_DB:-ndovu}?sslmode=disable
+  NDOVU_SMTP_HOST: ${NDOVU_SMTP_HOST:-mailhog}
+  NDOVU_SMTP_PORT: ${NDOVU_SMTP_PORT:-1025}
+  NDOVU_SMTP_USER: ${NDOVU_SMTP_USER:-}
+  NDOVU_SMTP_PASSWORD: ${NDOVU_SMTP_PASSWORD:-}
+  NDOVU_SMTP_FROM: ${NDOVU_SMTP_FROM:-ndovu@localhost}
+  NDOVU_DIGEST_RECIPIENTS: ${NDOVU_DIGEST_RECIPIENTS:-}
+  NDOVU_DIGEST_DASHBOARD_URL: ${NDOVU_DIGEST_DASHBOARD_URL:-http://localhost:13000}
+  NDOVU_S3_ENDPOINT: ${NDOVU_S3_ENDPOINT:-minio:9000}
+  NDOVU_S3_ACCESS_KEY: ${NDOVU_S3_ACCESS_KEY:-ndovu}
+  NDOVU_S3_SECRET_KEY: ${NDOVU_S3_SECRET_KEY:-ndovu-secret}
+  NDOVU_S3_USE_SSL: ${NDOVU_S3_USE_SSL:-false}
+  NDOVU_SNAPSHOT_BUCKET: ${NDOVU_SNAPSHOT_BUCKET:-ndovu-snapshots}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ndovu}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ndovu}
+      POSTGRES_DB: ${POSTGRES_DB:-ndovu}
+    ports:
+      - "55432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ndovu} -d ${POSTGRES_DB:-ndovu}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8-alpine
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-ndovu}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-ndovu}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-ndovu}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - chdata:/var/lib/clickhouse
+      - chdata-warm:/warm
+      # Cópia de desenvolvimento da policy `tiered`. A versão que vale em
+      # produção mora no repositório ndovu-platform — ao mudar uma, mude a outra.
+      - ./clickhouse/storage.xml:/etc/clickhouse-server/config.d/storage.xml:ro
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8123/ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  nats:
+    image: nats:2.10-alpine
+    command: ["-js", "-sd", "/data", "-m", "8222"]
+    ports:
+      - "4222:4222"
+    volumes:
+      - natsdata:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Apache Kafka (Redpanda — API-compatível). Backend de stream alternativo ao
+  # NATS. Habilitar com `--profile kafka` e `NDOVU_STREAM_BACKEND=kafka`.
+  kafka:
+    profiles: ["kafka"]
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.1
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp=1
+      - --memory=512M
+      - --reserve-memory=0M
+      - --node-id=0
+      - --kafka-addr=PLAINTEXT://0.0.0.0:29092,PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr=PLAINTEXT://kafka:29092,PLAINTEXT://localhost:9092
+      - --rpc-addr=0.0.0.0:33145
+      - --advertise-rpc-addr=kafka:33145
+    ports:
+      - "29092:29092"
+      - "9092:9092"
+      - "9644:9644"
+    volumes:
+      - kafkadata:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health --api-urls localhost:9644 --exit-when-healthy"]
+      interval: 10s
+      timeout: 60s
+      retries: 24
+      start_period: 60s
+
+  # RabbitMQ — backend de stream alternativo ao NATS. Habilitar com
+  # `--profile rabbitmq` e `NDOVU_STREAM_BACKEND=rabbitmq`.
+  rabbitmq:
+    profiles: ["rabbitmq"]
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ndovu
+      RABBITMQ_DEFAULT_PASS: ndovu
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmqdata:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports:
+      - "11025:1025"
+      - "18025:8025"
+
+  minio:
+    image: minio/minio:latest
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-ndovu}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-ndovu-secret}
+    ports:
+      - "19000:9000"
+      - "19001:9001"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-ndovu} ${MINIO_ROOT_PASSWORD:-ndovu-secret};
+      mc mb --ignore-existing local/ndovu-cold;
+      mc mb --ignore-existing local/ndovu-snapshots;
+      echo 'buckets ndovu-cold e ndovu-snapshots prontos';
+      "
+
+  api:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    environment:
+      <<: *app-env
+      NDOVU_PORT: 8080
+      NDOVU_CORS_ORIGINS: ${NDOVU_CORS_ORIGINS:-*}
+      NDOVU_AUTH_SECRET: ${NDOVU_AUTH_SECRET:-dev-secret-troque-em-producao}
+      NDOVU_ADMIN_EMAIL: ${NDOVU_ADMIN_EMAIL:-admin@ndovu.local}
+      NDOVU_ADMIN_PASSWORD: ${NDOVU_ADMIN_PASSWORD:-admin12345}
+      NDOVU_BOOTSTRAP_INGEST_KEY: ${NDOVU_BOOTSTRAP_INGEST_KEY:-dev-ingest-key}
+    ports:
+      - "18081:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+        required: false
+      rabbitmq:
+        condition: service_healthy
+        required: false
+
+  writer:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    entrypoint: ["/ndovu-writer"]
+    environment:
+      <<: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+        required: false
+      rabbitmq:
+        condition: service_healthy
+        required: false
+
+  # Perfil opcional: dashboard a partir da imagem publicada pelo repositório
+  # ndovu-dashboard. Quem desenvolve o dashboard não usa isto — roda
+  # `npm run dev` lá, apontando NEXT_PUBLIC_NDOVU_API para :18081.
+  dashboard:
+    profiles: ["ui"]
+    image: ${NDOVU_DASHBOARD_IMAGE:-ndovu-dashboard:latest}
+    ports:
+      - "13000:3000"
+    environment:
+      HOSTNAME: 0.0.0.0
+    depends_on:
+      - api
+
+volumes:
+  chdata:
+  chdata-warm:
+  natsdata:
+  kafkadata:
+  rabbitmqdata:
+  pgdata:
+  miniodata:
