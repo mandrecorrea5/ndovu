@@ -4,14 +4,13 @@
 }
 
 # ════════════════════════════════════════════════════════════════════
-# 1ª subida, sem DNS: NDOVU_APP_DOMAIN = IP da VPS.
-# Caddy emite ACME p/ IP → falha silenciosa → cai p/ self-signed
-# (Let's Encrypt não assina IP). Domínio real: mesmo bloco, ACME OK.
-# Sem Basic Auth aqui (browser não manda auth em navegação); a API
-# própria (Next.js) protege /api/* com sessão.
+# TLS: {$NDOVU_TLS_MODE} (definido pelo compose, default "internal").
+# 1ª subida, sem DNS: domínios = IP/hosts locais → self-signed
+# automático (LE não assina IP; ACME falharia). Domínio real:
+# NDOVU_TLS_MODE=acme + NDOVU_TLS_EMAIL p/ certificados públicos.
 # ════════════════════════════════════════════════════════════════════
 {$NDOVU_APP_DOMAIN} {
-	tls {$NDOVU_TLS_EMAIL}
+	tls {$NDOVU_TLS_MODE}
 	header {
 		Strict-Transport-Security "max-age=63072000; includeSubDomains"
 		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
@@ -36,7 +35,7 @@
 
 # Site da API: /metrics com Basic Auth (Prometheus); o resto proxy p/ api.
 {$NDOVU_API_DOMAIN} {
-	tls {$NDOVU_TLS_EMAIL}
+	tls {$NDOVU_TLS_MODE}
 	header {
 		Strict-Transport-Security "max-age=63072000; includeSubDomains"
 		X-Content-Type-Options "nosniff"

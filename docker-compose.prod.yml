@@ -5,6 +5,7 @@ services:
     environment:
       NDOVU_APP_DOMAIN: "${NDOVU_APP_DOMAIN-}"
       NDOVU_API_DOMAIN: "${NDOVU_API_DOMAIN-}"
+      NDOVU_TLS_MODE: "${NDOVU_TLS_MODE-internal}"
       NDOVU_TLS_EMAIL: "${NDOVU_TLS_EMAIL:?Set NDOVU_TLS_EMAIL}"
       # 1ª subida sem DNS (IP da VPS + hash de senha): publica a VPS por IP
       # com TLS auto-signado e Basic Auth global. Esvaziar ao apontar o
