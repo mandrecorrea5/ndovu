@@ -27,47 +27,10 @@
 # Produção com domínio (padrão — ACME automático)
 # ════════════════════════════════════════════════════════════════════
 
-{$NDOVU_APP_DOMAIN} {
-	header {
-		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
-		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
-		X-Content-Type-Options "nosniff"
-		X-Frame-Options "DENY"
-		Referrer-Policy "strict-origin-when-cross-origin"
-		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
-		Cross-Origin-Opener-Policy "same-origin"
-		Cross-Origin-Resource-Policy "same-origin"
-		-Server
-		-X-Powered-By
-	}
-	encode zstd gzip
-	reverse_proxy dashboard:3000
+{?NDOVU_APP_DOMAIN} {
+	import /etc/caddy/site-body
 }
 
-{$NDOVU_API_DOMAIN} {
-	header {
-		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
-		Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
-		X-Content-Type-Options "nosniff"
-		X-Frame-Options "DENY"
-		Referrer-Policy "strict-origin-when-cross-origin"
-		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
-		Cross-Origin-Opener-Policy "same-origin"
-		Cross-Origin-Resource-Policy "same-origin"
-		-Server
-		-X-Powered-By
-	}
-
-	# Rate limit na borda: a imagem oficial do Caddy (2.9) NÃO traz módulo de
-	# rate limit — o de ingestão vive na API Go (token bucket por X-Api-Key,
-	# NDOVU_INGEST_RATE_RPS).
-	# /metrics expõe contadores de tráfego/erros e fica atrás de Basic Auth
-	# (hash bcrypt gerado com `caddy hash-password`). O scraper do
-	# monitoramento usa a senha (NDOVU_METRICS_PASSWORD) cujo hash está em
-	# NDOVU_METRICS_PASSWORD_HASH no .env.production. /health permanece público.
-	basic_auth /metrics {
-		ndovu {$NDOVU_METRICS_PASSWORD_HASH}
-	}
-
-	reverse_proxy api:8080
+{?NDOVU_API_DOMAIN} {
+	import /etc/caddy/site-body-api
 }
