@@ -1,20 +1,20 @@
 # Runbooks
 
-Procedimentos operacionais da camada de dados. Cinco são obrigatórios antes de
-`ndovu-data-prd` receber tráfego real — os arquivos abaixo ainda **não foram
-escritos**; esta lista é o backlog, não um índice do que existe.
+Procedimentos operacionais da camada de dados — escritos e revisados
+(2026-09-30). Comandos na forma da trilha atual (VPS + Docker Compose); a
+trilha OpenShift manterá a mesma lógica com `kubectl`/`oc`.
 
-| Arquivo | Gatilho | Deve responder |
-|---------|---------|----------------|
-| `clickhouse-disk.md` | PVC hot acima de 75% | Expandir PVC, forçar move de TTL para warm/cold, ou reduzir retenção — nesta ordem |
-| `jetstream-backlog.md` | `num_pending` do consumer crescendo | Writer está de pé? ClickHouse aceita insert? Quanto tempo resta até o `MaxAge` descartar? |
-| `postgres-restore.md` | Perda do control plane | Restore point-in-time; sem control plane a ingestão para inteira |
-| `cold-tier-migration.md` | Troca de bucket ou de provedor S3 | Como mover parts do cold sem downtime de consulta |
-| `storage-expansion.md` | Crescimento acima do tier planejado | Expandir PVC online, trocar StorageClass, rebalancear shards |
+| Arquivo | Gatilho |
+|---------|---------|
+| [`clickhouse-disk.md`](./clickhouse-disk.md) | Disco hot > 75% |
+| [`jetstream-backlog.md`](./jetstream-backlog.md) | `num_pending` do consumer crescendo |
+| [`postgres-restore.md`](./postgres-restore.md) | Perda do control plane — **restore testado a cada trimestre** |
+| [`cold-tier-migration.md`](./cold-tier-migration.md) | Troca de bucket/provedor S3 do cold |
+| [`storage-expansion.md`](./storage-expansion.md) | Crescimento acima do tier planejado |
 
-Cada um deve caber em uma página e ser executável por quem está de plantão às
-3h da manhã sem conhecer o código: comandos concretos, saída esperada e o
-critério de quando escalar para o time de desenvolvimento.
+Deploy/update/rollback da aplicação:
+[`docs/RUNBOOK-DEPLOY.md`](../../docs/RUNBOOK-DEPLOY.md).
 
-O `postgres-restore.md` é o único que exige **execução periódica**: restore
-testado a cada trimestre. Um backup que nunca foi restaurado não é um backup.
+Regras dos runbooks: uma página, comandos concretos, saída esperada e o
+critério de escalar para o desenvolvimento. `postgres-restore.md` é o único
+com **execução periódica obrigatória** (trimestral).

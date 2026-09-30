@@ -229,7 +229,11 @@ cd dashboard && npx playwright test       # sobe stack via docker compose; ver d
 - [`docs/TECNICA.md`](docs/TECNICA.md) — endpoints, SDKs, exemplos.
 - [`docs/USO.md`](docs/USO.md) — guia de operação diária.
 - [`docs/DEPLOY-VPS.md`](docs/DEPLOY-VPS.md) — configuração de produção
-  para VPS Docker (hardening de credenciais; ainda não é o runbook completo).
+  para VPS Docker (segredos, rede/TLS, backup e validação).
+- [`docs/RUNBOOK-DEPLOY.md`](docs/RUNBOOK-DEPLOY.md) — passo a passo de
+  deploy, update e rollback (bootstrap incluído).
+- [`platform/runbooks/`](platform/runbooks/) — operação da camada de dados
+  (disco hot, backlog JetStream, restore PG/CH, cold tier, expansão).
 - [`docs/INTEGRATION.md`](docs/INTEGRATION.md) e [`docs/CONTRACT.md`](docs/CONTRACT.md) — instrumentar um app.
 - [`docs/TESTING.md`](docs/TESTING.md) — plano de testes.
 - [`docs/openshift/`](docs/openshift/) — **plano de deploy no OpenShift**:

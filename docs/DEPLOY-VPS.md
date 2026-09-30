@@ -1,9 +1,11 @@
 # Deploy na VPS — configuração e credenciais
 
 Este guia define o perfil de configuração de produção do Ndovu no Docker
-Compose. Ele cobre somente segredos e validação de configuração; **não é ainda
-um procedimento de deploy completo**. O Compose base ainda publica portas de
-serviços e precisa do hardening de rede/TLS antes de ser exposto à internet.
+Compose (segredos, rede/TLS, backup e validação). **O passo a passo de
+deploy, update e rollback está em
+[`RUNBOOK-DEPLOY.md`](./RUNBOOK-DEPLOY.md)**; a operação de dados (disco,
+backlog, restore, migração de cold, expansão) nos
+[`platform/runbooks/`](../platform/runbooks/).
 
 ## Variáveis obrigatórias
 
