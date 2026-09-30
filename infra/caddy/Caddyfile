@@ -6,41 +6,14 @@
 # ════════════════════════════════════════════════════════════════════
 # Perfis de exposição
 # ════════════════════════════════════════════════════════════════════
-# 1ª subida, sem DNS: NDOVU_BOOTSTRAP_IPS = IP da VPS (e
-# NDOVU_APP_DOMAIN/NDOVU_API_DOMAIN = mesma env — o compose faz o
-# default encadear). TLS interno + Basic Auth global no site do app.
+# 1ª subida, sem DNS: NDOVU_APP_DOMAIN = IP da VPS e
+# NDOVU_BOOTSTRAP_IPS = mesmo IP + NDOVU_BOOTSTRAP_PASSWORD_HASH →
+# o import abaixo (tls internal + basic_auth).
 #
-# Domínio: preencha as 2 envs de domínio e ESVAZIE as 2 de bootstrap —
-# a diretiva {$ENV:} condicional desaparece junto com a env.
-#
-# (Placeholder {$VAR} puro no cabeçalho de um server block colapsa a
-# config quando a env está vazia → por isso a env do perfil IP é a
-# única fonte de cabeçalho de server.)
+# Domínio: NDOVU_APP_DOMAIN/NDOVU_API_DOMAIN = domínios reais e
+# NDOVU_BOOTSTRAP_IPS VAZIO — o import é no-op.
 {$NDOVU_APP_DOMAIN} {
-	{$NDOVU_BOOTSTRAP_IPS:tls internal}
-	{$NDOVU_BOOTSTRAP_IPS:basic_auth}{
-		{$NDOVU_BOOTSTRAP_IPS:bootstrap {$NDOVU_BOOTSTRAP_PASSWORD_HASH}}
-	}
-	header {
-		Strict-Transport-Security "max-age=63072000; includeSubDomains"
-		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
-		X-Content-Type-Options "nosniff"
-		X-Frame-Options "DENY"
-		Referrer-Policy "strict-origin-when-cross-origin"
-		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
-		Cross-Origin-Opener-Policy "same-origin"
-		Cross-Origin-Resource-Policy "same-origin"
-		-Server
-		-X-Powered-By
-	}
-	encode zstd gzip
-	handle /api/* {
-		uri strip_prefix /api
-		reverse_proxy api:8080
-	}
-	handle {
-		reverse_proxy dashboard:3000
-	}
+	import /etc/caddy/profile-ip.caddy
 }
 
 {$NDOVU_API_DOMAIN} {
@@ -57,9 +30,7 @@
 		-X-Powered-By
 	}
 
-	# /metrics atrás de Basic Auth (hash bcrypt — a senha clara vive só
-	# no cofre do monitoramento). /health permanece público (sonda de
-	# uptime).
+	// /metrics atrás de Basic Auth. /health permanece público (sonda).
 	basic_auth {
 		path /metrics
 		ndovu {$NDOVU_METRICS_PASSWORD_HASH}
