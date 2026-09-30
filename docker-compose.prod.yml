@@ -231,6 +231,29 @@ services:
     networks:
       - default
 
+  clickhouse-backup:
+    profiles:
+      - backup
+    build:
+      context: ./infra/backup
+    restart: "no"
+    entrypoint: /usr/local/bin/clickhouse-backup
+    environment:
+      NDOVU_CH_HOST: clickhouse
+      NDOVU_CH_PORT: "9000"
+      NDOVU_CH_USER: "${CLICKHOUSE_USER:?Set CLICKHOUSE_USER}"
+      NDOVU_CH_PASSWORD: "${CLICKHOUSE_PASSWORD:?Set CLICKHOUSE_PASSWORD}"
+      NDOVU_CH_DATABASE: "${CLICKHOUSE_DB:?Set CLICKHOUSE_DB}"
+      NDOVU_CH_BACKUP_S3_ENDPOINT: "${NDOVU_CH_BACKUP_S3_ENDPOINT:?Set NDOVU_CH_BACKUP_S3_ENDPOINT}"
+      NDOVU_CH_BACKUP_S3_ACCESS_KEY: "${NDOVU_CH_BACKUP_S3_ACCESS_KEY:?Set NDOVU_CH_BACKUP_S3_ACCESS_KEY}"
+      NDOVU_CH_BACKUP_S3_SECRET_KEY: "${NDOVU_CH_BACKUP_S3_SECRET_KEY:?Set NDOVU_CH_BACKUP_S3_SECRET_KEY}"
+      NDOVU_CH_BACKUP_BUCKET: "${NDOVU_CH_BACKUP_BUCKET:?Set NDOVU_CH_BACKUP_BUCKET}"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    networks:
+      - default
+
 volumes:
   caddy_data:
   caddy_config:

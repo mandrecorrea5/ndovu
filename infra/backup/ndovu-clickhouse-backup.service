@@ -1,0 +1,9 @@
+[Unit]
+Description=Ndovu ClickHouse backup to Cloudflare R2
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/ndovu
+ExecStart=/usr/bin/docker compose --env-file .env.production -f docker-compose.yml -f docker-compose.prod.yml --profile backup run --rm clickhouse-backup
