@@ -4,10 +4,15 @@
 }
 
 # ════════════════════════════════════════════════════════════════════
-# TLS: {$NDOVU_TLS_MODE} (definido pelo compose, default "internal").
-# 1ª subida, sem DNS: domínios = IP/hosts locais → self-signed
-# automático (LE não assina IP; ACME falharia). Domínio real:
-# NDOVU_TLS_MODE=acme + NDOVU_TLS_EMAIL p/ certificados públicos.
+# 1 server, 1 env de cabeçalho.
+# 1ª subida, sem DNS: NDOVU_APP_DOMAIN = IP da VPS + NDOVU_TLS_MODE=internal
+# (LE não assina IP → self-signed). Domínio real: NDOVU_APP_DOMAIN=dominio
+# + NDOVU_TLS_MODE=acme + NDOVU_TLS_EMAIL.
+#
+# A env NDOVU_API_DOMAIN é usada só pelo smoke/README (mesma porta 8443;
+# a API é exposta em /api/* e /metrics neste mesmo server).
+# Sem Basic Auth no site do app (browser não manda auth em navegação);
+# a API própria (Next.js) protege /api/* com sessão.
 # ════════════════════════════════════════════════════════════════════
 {$NDOVU_APP_DOMAIN} {
 	tls {$NDOVU_TLS_MODE}
@@ -28,31 +33,13 @@
 		uri strip_prefix /api
 		reverse_proxy api:8080
 	}
-	handle {
-		reverse_proxy dashboard:3000
-	}
-}
-
-# Site da API: /metrics com Basic Auth (Prometheus); o resto proxy p/ api.
-{$NDOVU_API_DOMAIN} {
-	tls {$NDOVU_TLS_MODE}
-	header {
-		Strict-Transport-Security "max-age=63072000; includeSubDomains"
-		X-Content-Type-Options "nosniff"
-		X-Frame-Options "DENY"
-		Referrer-Policy "strict-origin-when-cross-origin"
-		-Server
-		-X-Powered-By
-	}
-	encode zstd gzip
 	handle /metrics {
 		basic_auth {
 			metrics {$NDOVU_METRICS_PASSWORD_HASH}
 		}
 		reverse_proxy api:8080
 	}
-	respond /healthz 200
 	handle {
-		reverse_proxy api:8080
+		reverse_proxy dashboard:3000
 	}
 }
