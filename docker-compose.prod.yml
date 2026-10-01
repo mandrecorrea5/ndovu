@@ -236,6 +236,7 @@ services:
       - backup
     build:
       context: ./infra/backup
+      dockerfile: clickhouse.Dockerfile
     restart: "no"
     entrypoint: /usr/local/bin/clickhouse-backup
     environment:
