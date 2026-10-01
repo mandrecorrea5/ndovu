@@ -13,6 +13,9 @@ umask 077
 
 backup_path=${1:?usage: clickhouse-restore /clickhouse/YYYY/MM/DD/ndovu-ch-TIMESTAMP/}
 backup_path=${backup_path#/}
+# Banco de destino; padrao e o proprio. Outro nome = restore lado a lado
+# (ex.: ndovu_restore_test) sem tocar no banco de producao.
+target_db=${NDOVU_CH_RESTORE_TARGET_DATABASE:-$NDOVU_CH_DATABASE}
 
 case "$NDOVU_CH_BACKUP_S3_ENDPOINT" in
   https://*) ;;
@@ -43,7 +46,7 @@ sql_str() {
 restore_uri="S3($(sql_str "$endpoint/$backup_path"), $(sql_str "$NDOVU_CH_BACKUP_S3_ACCESS_KEY"), $(sql_str "$NDOVU_CH_BACKUP_S3_SECRET_KEY"))"
 
 # ASYNC devolve "id<TAB>status"; so o id interessa.
-restore_id=$(query "RESTORE DATABASE \`$NDOVU_CH_DATABASE\` FROM $restore_uri ASYNC" | cut -f1)
+restore_id=$(query "RESTORE DATABASE \`$NDOVU_CH_DATABASE\` AS \`$target_db\` FROM $restore_uri ASYNC" | cut -f1)
 printf 'restore %s: started\n' "$restore_id"
 
 status=
@@ -66,4 +69,4 @@ if [ "$status" != "RESTORED" ]; then
 fi
 
 printf 'ClickHouse restore completed into database %s from %s\n' \
-  "$NDOVU_CH_DATABASE" "$backup_path"
+  "$target_db" "$backup_path"
