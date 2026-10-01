@@ -1,0 +1,13 @@
+[Unit]
+Description=Ndovu CD — puxa origin/main e aplica na VPS (timer-driven)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/ndovu
+ExecStart=/opt/ndovu/tools/cd/deploy.sh
+StandardOutput=append:/var/log/ndovu-cd/deploy.log
+StandardError=append:/var/log/ndovu-cd/deploy.log
+# O smoke pode demorar (30 × 2s + build); sem timeout o systemd mataria no meio.
+TimeoutStartSec=1800

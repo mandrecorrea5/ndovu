@@ -1,0 +1,10 @@
+[Unit]
+Description=Ndovu CD — verifica origin/main a cada 5 min
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+RandomizedDelaySec=30s
+
+[Install]
+WantedBy=timers.target
