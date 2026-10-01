@@ -20,20 +20,8 @@ case "$NDOVU_CH_BACKUP_S3_ENDPOINT" in
     ;;
 esac
 
-clickhouse-client \
-  --host "$NDOVU_CH_HOST" \
-  --port "$NDOVU_CH_PORT" \
-  --user "$NDOVU_CH_USER" \
-  --password "$NDOVU_CH_PASSWORD" \
-  --query "SELECT count() FROM system.tables WHERE database = '$NDOVU_CH_DATABASE'" >/dev/null
-
-date_part=$(date -u '+%Y/%m/%d')
-timestamp=$(date -u '+%Y%m%dT%H%M%SZ')
-prefix="clickhouse/${date_part}/ndovu-ch-${timestamp}"
-
-# 3 args em TO S3: 24.8 trata o 4º como region inválida (Code:42).
-# Endpoint R2 já inclui o caminho do bucket; o prefixo do backup vem depois.
-backup_uri="s3($NDOVU_CH_BACKUP_S3_ENDPOINT/$prefix/, $NDOVU_CH_BACKUP_S3_ACCESS_KEY, $NDOVU_CH_BACKUP_S3_SECRET_KEY)"
+# R2 manda o endpoint com o bucket no caminho; tira a / final para nao gerar //.
+endpoint=${NDOVU_CH_BACKUP_S3_ENDPOINT%/}
 
 query() {
   clickhouse-client \
@@ -44,25 +32,49 @@ query() {
     --query "$1"
 }
 
-backup_id=$(query "BACKUP DATABASE $NDOVU_CH_DATABASE TO $backup_uri ASYNC")
+# Literal de string SQL: escapa \ e ' e envolve em aspas simples.
+sql_str() {
+  printf "'%s'" "$(printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e "s/'/\\\\'/g")"
+}
+
+query "SELECT count() FROM system.tables WHERE database = $(sql_str "$NDOVU_CH_DATABASE")" >/dev/null
+
+date_part=$(date -u '+%Y/%m/%d')
+timestamp=$(date -u '+%Y%m%dT%H%M%SZ')
+prefix="clickhouse/${date_part}/ndovu-ch-${timestamp}"
+
+access_key=$(sql_str "$NDOVU_CH_BACKUP_S3_ACCESS_KEY")
+secret_key=$(sql_str "$NDOVU_CH_BACKUP_S3_SECRET_KEY")
+
+# Argumentos de S3(...) sao literais entre aspas. 3 args: na 24.8 o 4o vira
+# region invalida (Code:42).
+backup_uri="S3($(sql_str "$endpoint/$prefix/"), $access_key, $secret_key)"
+
+# ASYNC devolve "id<TAB>status"; so o id interessa.
+backup_id=$(query "BACKUP DATABASE \`$NDOVU_CH_DATABASE\` TO $backup_uri ASYNC" | cut -f1)
 printf 'backup %s: started\n' "$backup_id"
 
 status=
 while :; do
-  status=$(query "SELECT status FROM system.backups WHERE id = '$backup_id'")
+  status=$(query "SELECT status FROM system.backups WHERE id = $(sql_str "$backup_id")")
   case "$status" in
     BACKUP_CREATED|BACKUP_FAILED) break ;;
+    '')
+      printf 'backup %s not found in system.backups\n' "$backup_id" >&2
+      exit 1
+      ;;
   esac
   sleep 5
 done
 
 if [ "$status" != "BACKUP_CREATED" ]; then
-  error=$(query "SELECT leftUTF8(error, 500) FROM system.backups WHERE id = '$backup_id'")
+  error=$(query "SELECT leftUTF8(error, 500) FROM system.backups WHERE id = $(sql_str "$backup_id")")
   printf 'backup %s failed: %s\n' "$backup_id" "$error" >&2
   exit 1
 fi
 
-files=$(query "SELECT count() FROM system.backup_storage('s3', '$NDOVU_CH_BACKUP_S3_ENDPOINT/$prefix/') FORMAT TabSeparated")
+# Formato One: 1 linha por objeto sem ler o conteudo.
+files=$(query "SELECT count() FROM s3($(sql_str "$endpoint/$prefix/**"), $access_key, $secret_key, 'One')")
 
 if [ "$files" -eq 0 ]; then
   echo "backup finished but no objects were written to the destination" >&2

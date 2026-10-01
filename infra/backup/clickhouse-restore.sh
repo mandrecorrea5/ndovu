@@ -22,6 +22,8 @@ case "$NDOVU_CH_BACKUP_S3_ENDPOINT" in
     ;;
 esac
 
+endpoint=${NDOVU_CH_BACKUP_S3_ENDPOINT%/}
+
 query() {
   clickhouse-client \
     --host "$NDOVU_CH_HOST" \
@@ -31,23 +33,34 @@ query() {
     --query "$1"
 }
 
-# 3 args em FROM S3: 24.8 trata o 4º como region inválida (Code:42).
-restore_uri="s3($NDOVU_CH_BACKUP_S3_ENDPOINT/$backup_path, $NDOVU_CH_BACKUP_S3_ACCESS_KEY, $NDOVU_CH_BACKUP_S3_SECRET_KEY)"
+# Literal de string SQL: escapa \ e ' e envolve em aspas simples.
+sql_str() {
+  printf "'%s'" "$(printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e "s/'/\\\\'/g")"
+}
 
-restore_id=$(query "RESTORE DATABASE $NDOVU_CH_DATABASE FROM $restore_uri ASYNC")
+# Argumentos de S3(...) sao literais entre aspas. 3 args: na 24.8 o 4o vira
+# region invalida (Code:42).
+restore_uri="S3($(sql_str "$endpoint/$backup_path"), $(sql_str "$NDOVU_CH_BACKUP_S3_ACCESS_KEY"), $(sql_str "$NDOVU_CH_BACKUP_S3_SECRET_KEY"))"
+
+# ASYNC devolve "id<TAB>status"; so o id interessa.
+restore_id=$(query "RESTORE DATABASE \`$NDOVU_CH_DATABASE\` FROM $restore_uri ASYNC" | cut -f1)
 printf 'restore %s: started\n' "$restore_id"
 
 status=
 while :; do
-  status=$(query "SELECT status FROM system.restores WHERE id = '$restore_id'")
+  status=$(query "SELECT status FROM system.backups WHERE id = $(sql_str "$restore_id")")
   case "$status" in
     RESTORED|RESTORE_FAILED) break ;;
+    '')
+      printf 'restore %s not found in system.backups\n' "$restore_id" >&2
+      exit 1
+      ;;
   esac
   sleep 5
 done
 
 if [ "$status" != "RESTORED" ]; then
-  error=$(query "SELECT leftUTF8(error, 500) FROM system.restores WHERE id = '$restore_id'")
+  error=$(query "SELECT leftUTF8(error, 500) FROM system.backups WHERE id = $(sql_str "$restore_id")")
   printf 'restore %s failed: %s\n' "$restore_id" "$error" >&2
   exit 1
 fi
