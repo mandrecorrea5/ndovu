@@ -44,6 +44,7 @@ compose() {
 }
 
 # --- estado de referência ----------------------------------------------------
+mkdir -p "$CD_DIR"
 if [ ! -f "$CD_DIR/deployed-sha" ]; then
   log "deploy por timer nunca marcou um SHA — assumindo a árvore atual"
   git rev-parse HEAD > "$CD_DIR/deployed-sha"
