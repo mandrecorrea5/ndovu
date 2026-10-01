@@ -1,25 +1,25 @@
 # Session Context (AUTO-checkpoint na compactação — plugin gmz P2)
-atualizado: 2026-09-30T17:32:34.600Z · 857min · 645 tool calls
+atualizado: 2026-10-01T12:15:13.139Z · 1980min · 1254 tool calls
 
 ## OBJETIVO (norte — não perder de vista)
 (objetivo não capturado nesta sessão)
 
 ## Arquivos tocados
-- /Users/marcoscorrea/Develop/personal-projects/ndovu/infra/caddy/Caddyfile (10 edições)
-- /Users/marcoscorrea/Develop/personal-projects/ndovu/dashboard/src/app/api/admin/users/[id]/permissions/[appId]/route.ts (1 edições)
-- /Users/marcoscorrea/Develop/personal-projects/ndovu/docker-compose.prod.yml (12 edições)
-- /Users/marcoscorrea/Develop/personal-projects/ndovu/docker-compose.yml (3 edições)
-- /Users/marcoscorrea/Develop/personal-projects/ndovu/docs/RUNBOOK-DEPLOY.md (2 edições)
-- /Users/marcoscorrea/Develop/personal-projects/ndovu/docs/CAPACITY-VPS.md (9 edições)
-- /Users/marcoscorrea/Develop/personal-projects/ndovu/README.md (2 edições)
-- /Users/marcoscorrea/Develop/personal-projects/ndovu/infra/clickhouse/tuning-prod.xml (1 edições)
-- /Users/marcoscorrea/Develop/personal-projects/ndovu/docs/DEPLOY-VPS.md (3 edições)
-- /Users/marcoscorrea/Develop/personal-projects/ndovu/platform/runbooks/clickhouse-disk.md (3 edições)
-- /Users/marcoscorrea/Develop/personal-projects/ndovu/.env.production.example (1 edições)
-- /Users/marcoscorrea/Develop/personal-projects/ndovu/platform/runbooks/README.md (1 edições)
+- /Users/marcoscorrea/Develop/personal-projects/ndovu/infra/backup/Dockerfile (2 edições)
+- /Users/marcoscorrea/Develop/personal-projects/ndovu/tools/cd/run-once.sh (1 edições)
+- /Users/marcoscorrea/Develop/personal-projects/ndovu/tools/cd/deploy.sh (3 edições)
+- /Users/marcoscorrea/Develop/personal-projects/ndovu/.env.production.example (3 edições)
+- /Users/marcoscorrea/Develop/personal-projects/ndovu/tools/cd/ndovu-cd.timer (1 edições)
+- /Users/marcoscorrea/Develop/personal-projects/ndovu/tools/cd/ndovu-cd.service (1 edições)
+- /Users/marcoscorrea/Develop/personal-projects/ndovu/.github/workflows/ci.yml (1 edições)
+- /Users/marcoscorrea/Develop/personal-projects/ndovu/infra/backup/clickhouse-backup.sh (5 edições)
+- /Users/marcoscorrea/Develop/personal-projects/ndovu/docker-compose.prod.yml (15 edições)
+- /Users/marcoscorrea/Develop/personal-projects/ndovu/infra/backup/ndovu-clickhouse-backup.timer (1 edições)
+- /Users/marcoscorrea/Develop/personal-projects/ndovu/infra/backup/ndovu-clickhouse-backup.service (1 edições)
+- /Users/marcoscorrea/Develop/personal-projects/ndovu/infra/backup/clickhouse-restore.sh (1 edições)
 
 ## Última suite
-- VERDE — ok  	github.com/marcoscorrea/ndovu/backend/internal/usecase	7.423s
+- VERDE — sdk OK
 
 ## Retomar
 Continue do estado acima rumo ao OBJETIVO. Não repita trabalho já concluído.

@@ -1,18 +1,29 @@
 # GMZ Ledger (auto — gerado pelo plugin; não editar à mão)
-atualizado: 2026-09-30T16:31:59.793Z
+atualizado: 2026-10-01T13:37:32.753Z
 
 ## Arquivos mutados nesta sessão
-- /Users/marcoscorrea/Develop/personal-projects/ndovu/infra/caddy/Caddyfile (10 edições)
+- /Users/marcoscorrea/Develop/personal-projects/ndovu/infra/backup/Dockerfile (17 edições)
+- /Users/marcoscorrea/Develop/personal-projects/ndovu/infra/backup/clickhouse-backup.sh (7 edições)
+- /Users/marcoscorrea/Develop/personal-projects/ndovu/infra/backup/clickhouse-client.py (6 edições)
+- /Users/marcoscorrea/Develop/personal-projects/ndovu/tools/cd/run-once.sh (1 edições)
+- /Users/marcoscorrea/Develop/personal-projects/ndovu/tools/cd/deploy.sh (3 edições)
+- /Users/marcoscorrea/Develop/personal-projects/ndovu/.env.production.example (3 edições)
+- /Users/marcoscorrea/Develop/personal-projects/ndovu/tools/cd/ndovu-cd.timer (1 edições)
+- /Users/marcoscorrea/Develop/personal-projects/ndovu/tools/cd/ndovu-cd.service (1 edições)
+- /Users/marcoscorrea/Develop/personal-projects/ndovu/.github/workflows/ci.yml (1 edições)
+- /Users/marcoscorrea/Develop/personal-projects/ndovu/docker-compose.prod.yml (15 edições)
+- /Users/marcoscorrea/Develop/personal-projects/ndovu/infra/backup/ndovu-clickhouse-backup.timer (1 edições)
+- /Users/marcoscorrea/Develop/personal-projects/ndovu/infra/backup/ndovu-clickhouse-backup.service (1 edições)
+- /Users/marcoscorrea/Develop/personal-projects/ndovu/infra/backup/clickhouse-restore.sh (1 edições)
+- /Users/marcoscorrea/Develop/personal-projects/ndovu/docs/RUNBOOK-DEPLOY.md (3 edições)
+- /Users/marcoscorrea/Develop/personal-projects/ndovu/infra/caddy/Caddyfile (13 edições)
 - /Users/marcoscorrea/Develop/personal-projects/ndovu/dashboard/src/app/api/admin/users/[id]/permissions/[appId]/route.ts (1 edições)
-- /Users/marcoscorrea/Develop/personal-projects/ndovu/docker-compose.prod.yml (12 edições)
 - /Users/marcoscorrea/Develop/personal-projects/ndovu/docker-compose.yml (3 edições)
-- /Users/marcoscorrea/Develop/personal-projects/ndovu/docs/RUNBOOK-DEPLOY.md (2 edições)
 - /Users/marcoscorrea/Develop/personal-projects/ndovu/docs/CAPACITY-VPS.md (9 edições)
 - /Users/marcoscorrea/Develop/personal-projects/ndovu/README.md (2 edições)
 - /Users/marcoscorrea/Develop/personal-projects/ndovu/infra/clickhouse/tuning-prod.xml (1 edições)
 - /Users/marcoscorrea/Develop/personal-projects/ndovu/docs/DEPLOY-VPS.md (3 edições)
 - /Users/marcoscorrea/Develop/personal-projects/ndovu/platform/runbooks/clickhouse-disk.md (3 edições)
-- /Users/marcoscorrea/Develop/personal-projects/ndovu/.env.production.example (1 edições)
 - /Users/marcoscorrea/Develop/personal-projects/ndovu/platform/runbooks/README.md (1 edições)
 - /Users/marcoscorrea/Develop/personal-projects/ndovu/platform/runbooks/storage-expansion.md (2 edições)
 - /Users/marcoscorrea/Develop/personal-projects/ndovu/platform/runbooks/cold-tier-migration.md (5 edições)
@@ -20,4 +31,4 @@ atualizado: 2026-09-30T16:31:59.793Z
 - /Users/marcoscorrea/Develop/personal-projects/ndovu/platform/runbooks/jetstream-backlog.md (1 edições)
 
 ## Última suite
-- VERDE — `cd backend && go vet ./... && go test -count=1 ./internal/config/... ./internal/` — ok  	github.com/marcoscorrea/ndovu/backend/internal/usecase	7.423s
+- VERDE — `cd backend && go build ./... && go vet ./... && go test ./... >/dev/null 2>&1 &&` — 100ae65 fix(backup): clickhouse-client vem da imagem oficial da stack (estágio chbin)
