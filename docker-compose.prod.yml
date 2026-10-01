@@ -236,10 +236,6 @@ services:
       - backup
     build:
       context: ./infra/backup
-      # o cliente ClickHouse vem da imagem da stack (mesma serie 24.8); buildx
-      # nao expande ${VAR} em COPY --from, entao o nome do contexto e fixo.
-      additional_contexts:
-        ndovu-clickhouse: clickhouse/clickhouse-server:24.8-alpine
     restart: "no"
     entrypoint: /usr/local/bin/clickhouse-backup
     environment:

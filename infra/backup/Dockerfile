@@ -12,8 +12,8 @@ FROM postgres:16-alpine
 # e o binario oficial multi-comando (client + server) — 2o erro real de
 # tentativa foi so um caminho errado da minha parte.
 #
-# 24.8-alpine ja traz curl + ca-certificates, entao 0 pacotes a mais.
-RUN apk add --no-cache age aws-cli \
+# postgres:16-alpine NAO traz curl, entao ele entra no apk junto.
+RUN apk add --no-cache age aws-cli curl ca-certificates \
  && curl -fsSL https://builds.clickhouse.com/master/amd64/clickhouse \
       -o /usr/local/bin/clickhouse \
  && chmod 0755 /usr/local/bin/clickhouse \
