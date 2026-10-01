@@ -2,20 +2,23 @@ FROM postgres:16-alpine
 
 # age + aws-cli: cofre do Postgres (dump/restore).
 #
-# Cliente ClickHouse: NAO existe pacote Alpine `clickhouse-client` (erro real do
-# 1o disparo) e a superficie de download oficial (builds.clickhouse.com,
-# packages.clickhouse.com/static) esta 404/403. O binario vem entao da MESMA
-# imagem oficial da stack (24.8), via --build-context abaixo.
+# Cliente ClickHouse — por que NAO as 3 fontes "obvias":
+#   1. `apk add clickhouse-client`: NAO EXISTE em Alpine (foi o 1o erro real).
+#   2. 24.8 da stack: /usr/bin/clickhouse dela e SO servidor (a 24.12 sim traz
+#      o client, e 24.12 + servidor 24.8 da erro de handshake).
+#   3. download da superficie publica: packages.clickhouse.com esta 403/404.
 #
-# Buildx nao expande ${VAR} em COPY --from, entao o nome do contexto e fixo.
-# O compose define `additional_contexts` para este build, e o
-# tools/cd/prepare-backup-image.sh monta o mesmo contexto (idempotente): a
-# imagem fica SEMPRE na mesma versao do servidor, sem depender de rede externa.
-RUN apk add --no-cache age aws-cli
-
-COPY --from=ndovu-clickhouse /usr/bin/clickhouse /usr/local/bin/clickhouse
-RUN chmod 0755 /usr/local/bin/clickhouse \
- && ln -sf /usr/local/bin/clickhouse /usr/local/bin/clickhouse-client
+# Fonte certa: builds.clickhouse.com/master/amd64/clickhouse (200, 217MB), que
+# e o binario oficial multi-comando (client + server) — 2o erro real de
+# tentativa foi so um caminho errado da minha parte.
+#
+# 24.8-alpine ja traz curl + ca-certificates, entao 0 pacotes a mais.
+RUN apk add --no-cache age aws-cli \
+ && curl -fsSL https://builds.clickhouse.com/master/amd64/clickhouse \
+      -o /usr/local/bin/clickhouse \
+ && chmod 0755 /usr/local/bin/clickhouse \
+ && ln -sf /usr/local/bin/clickhouse /usr/local/bin/clickhouse-client \
+ && clickhouse-client --version
 
 COPY postgres-backup.sh /usr/local/bin/postgres-backup
 COPY postgres-restore.sh /usr/local/bin/postgres-restore
