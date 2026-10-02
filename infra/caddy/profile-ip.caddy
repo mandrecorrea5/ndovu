@@ -16,10 +16,9 @@ header {
 # Content-Security-Policy NÃO vai aqui: o dashboard (Next.js) monta o seu
 # próprio CSP com nonce por requisição em src/middleware.ts.
 encode zstd gzip
-handle /api/* {
-	uri strip_prefix /api
-	reverse_proxy api:8080
-}
+# Sem handle /api/* pra api:8080 aqui: o dashboard é o BFF completo e
+# fala com a api direto via rede interna (dashboard/src/lib/bff.ts) — ver
+# comentário equivalente no Caddyfile principal.
 handle {
 	reverse_proxy dashboard:3000
 }

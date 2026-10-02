@@ -7,8 +7,16 @@
 # ════════════════════════════════════════════════════════════════════
 # Os hostnames públicos são encaminhados ao Caddy pelo Cloudflare Tunnel.
 #
-#   {$NDOVU_APP_DOMAIN} → dashboard + /api/* + /metrics
+#   {$NDOVU_APP_DOMAIN} → dashboard (inclui /api/* — BFF do próprio Next) + /metrics
 #   {$NDOVU_API_DOMAIN} → api:8080 + /metrics
+#
+# O dashboard é o BFF completo: suas rotas /api/* (dashboard/src/app/api/**)
+# falam com a api Go direto via rede interna (http://api:8080, ver
+# dashboard/src/lib/bff.ts), sem passar pelo Caddy. Por isso o domínio do
+# app NÃO tem um handle /api/* próprio — proxyar /api/* direto pra api:8080
+# aqui colide com essas rotas do Next (ex.: POST /api/auth/login do BFF vs.
+# /auth/login na api, que nem existe — rotas do Go são todas sob /v1/*) e
+# dá 404. SDKs de ingestão usam {$NDOVU_API_DOMAIN}, não este domínio.
 #
 # O TLS público termina na Cloudflare. O cloudflared chega ao Caddy por HTTP
 # somente na rede Docker privada da stack.
@@ -31,10 +39,6 @@ http://{$NDOVU_APP_DOMAIN} {
 	# header estático aqui sobrescreveria esse nonce e voltaria a bloquear
 	# os scripts inline de hidratação do React Server Components.
 	encode zstd gzip
-	handle /api/* {
-		uri strip_prefix /api
-		reverse_proxy api:8080
-	}
 	handle /metrics {
 		basic_auth {
 			metrics {$NDOVU_METRICS_PASSWORD_HASH}
