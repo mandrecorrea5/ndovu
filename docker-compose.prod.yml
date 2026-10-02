@@ -10,10 +10,12 @@ services:
       NDOVU_METRICS_PASSWORD_HASH: "${NDOVU_METRICS_PASSWORD_HASH:?Set NDOVU_METRICS_PASSWORD_HASH}"
     ports: !override []
     volumes:
-      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./infra/caddy/bootstrap-body:/etc/caddy/bootstrap-body:ro
-      - ./infra/caddy/site-body:/etc/caddy/site-body:ro
-      - ./infra/caddy/site-body-api:/etc/caddy/site-body-api:ro
+      # Mount do diretório inteiro, não de arquivos individuais: bind mount
+      # de arquivo único fica preso ao inode original, e o git substitui o
+      # Caddyfile via rename a cada deploy — reload continuava servindo a
+      # config velha porque o mount nunca via o arquivo novo. Mount de
+      # diretório acompanha o conteúdo vivo do host.
+      - ./infra/caddy:/etc/caddy:ro
       - caddy_data:/data
       - caddy_config:/config
     networks:
