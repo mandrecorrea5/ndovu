@@ -1,13 +1,11 @@
 'use client';
 
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
 import { Button, Field, Input } from '@/components/form';
-import { ApiError } from '@/lib/api';
-import { login as loginSession } from '@/lib/auth';
+import { ApiErrorLite, login as loginSession } from '@/lib/auth';
 
 function LoginForm() {
-  const router = useRouter();
   const params = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -21,11 +19,13 @@ function LoginForm() {
     try {
       await loginSession(email, password);
       const next = params.get('next');
-      router.replace(next && next.startsWith('/') ? next : '/');
-      router.refresh();
+      // Navegação dura (não router.replace + router.refresh do App Router):
+      // as duas chamadas competem entre si — refresh() pode re-renderizar a
+      // rota ainda em transição e a navegação "perde", deixando a página
+      // visualmente presa em /login mesmo com o cookie de sessão já setado.
+      window.location.assign(next && next.startsWith('/') ? next : '/');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Falha no login');
-    } finally {
+      setError(err instanceof ApiErrorLite ? err.message : 'Falha no login');
       setLoading(false);
     }
   };
