@@ -30,7 +30,7 @@ async function upstreamRequest(
 ) {
   try {
     const data = await upstream(method, path, { token, body: body ?? undefined, query });
-    return proxyResponse(data);
+    return proxyResponse({ user: data });
   } catch (err) {
     return errorResponse(err);
   }
