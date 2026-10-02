@@ -10,11 +10,10 @@
 #   {$NDOVU_APP_DOMAIN} → dashboard + /api/* + /metrics
 #   {$NDOVU_API_DOMAIN} → api:8080 + /metrics
 #
-# O Tunnel termina o TLS público na Cloudflare. O Caddy mantém TLS interno
-# para a conexão do cloudflared.
+# O TLS público termina na Cloudflare. O cloudflared chega ao Caddy por HTTP
+# somente na rede Docker privada da stack.
 # ════════════════════════════════════════════════════════════════════
-{$NDOVU_APP_DOMAIN} {
-	tls internal
+http://{$NDOVU_APP_DOMAIN} {
 
 	header {
 		Strict-Transport-Security "max-age=63072000; includeSubDomains"
@@ -46,8 +45,7 @@
 
 # Host da API (deploy curl, cliente). /api/* corta o prefixo (o api
 # escuta rotas raiz); resto → api (healthz etc.).
-{$NDOVU_API_DOMAIN} {
-	tls internal
+http://{$NDOVU_API_DOMAIN} {
 
 	header {
 		Strict-Transport-Security "max-age=63072000; includeSubDomains"

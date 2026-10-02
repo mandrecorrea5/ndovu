@@ -9,7 +9,7 @@
 Prerequisitos já validados localmente: `DEPLOY-VPS.md` inteiro +
 `.env.production` real (todos os segredos ≥ requisito, `chmod 600`) + Tunnel
 criado na Cloudflare, token configurado e duas rotas públicas apontando para
-`https://caddy:443` + 3+1 buckets R2 com credenciais isoladas + identidades
+`http://caddy:80` + 3+1 buckets R2 com credenciais isoladas + identidades
 age PG/CH no cofre (não na VPS).
 
 ```bash
@@ -39,7 +39,8 @@ curl -sSf https://NDOVU_API_DOMAIN/health   # 200
 5. **Tunnel:** confirme `docker compose logs cloudflared` sem erros de conexão
    e teste `curl -vI https://NDOVU_APP_DOMAIN` e
    `curl -sSf https://NDOVU_API_DOMAIN/health`. Os certificados públicos são
-   gerenciados pela Cloudflare; o Caddy usa TLS interno na origem.
+   gerenciados pela Cloudflare; o tráfego da origem segue pela rede Docker
+   privada até o Caddy via HTTP.
 
 ### 1.5 Acesso público pelo Tunnel
 
@@ -49,9 +50,8 @@ conforme `DEPLOY-VPS.md`. Não use o IP da VPS como hostname público nem
 publique `8443` como alternativa.
 
 Se a rota não funcionar, confira primeiro o estado do Tunnel no painel e os
-logs do conector. Para cada hostname, confirme `Origin Server Name` igual ao
-hostname e **No TLS Verify** ativado: o Caddy apresenta certificado emitido
-pela CA interna.
+logs do conector. Confirme que os serviços das duas rotas são
+`http://caddy:80` e que o Host HTTP está usando o padrão.
 
 ## 2. Update de versão (rotina)
 

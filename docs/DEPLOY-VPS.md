@@ -62,24 +62,22 @@ dos serviços Ndovu. Não é necessário abrir portas de entrada 80/443 nem
    token. Configure `NDOVU_CLOUDFLARED_TUNNEL_TOKEN` no `.env.production` da
    VPS, com permissões `600`, ou nas variáveis protegidas da stack no Portainer.
    Não cole o token em arquivos versionados nem o compartilhe em logs.
-2. Nas rotas públicas do Tunnel, cadastre os dois hostnames, usando como
-   serviço de origem `https://caddy:443`:
-   - `NDOVU_APP_DOMAIN` → `https://caddy:443`;
-   - `NDOVU_API_DOMAIN` → `https://caddy:443`.
-3. Em **Additional application settings → TLS** de cada rota, configure
-   **Origin Server Name** com o hostname público daquela rota e habilite
-   **No TLS Verify**. O Caddy usa sua CA interna, não confiada publicamente;
-   o tráfego entre o conector e o Caddy continua criptografado, mas a
-   identidade do certificado de origem não é validada. O Host HTTP original
-   deve ser preservado para o Caddy escolher a rota correta.
+2. Nas rotas públicas do Tunnel, cadastre os dois hostnames com serviço de
+   origem HTTP na rede Docker:
+   - `NDOVU_APP_DOMAIN` → `http://caddy:80`;
+   - `NDOVU_API_DOMAIN` → `http://caddy:80`.
+3. Em **Additional application settings**, deixe **HTTP** em **Using defaults**
+   e não configure opções de TLS de origem. O Host HTTP original deve ser
+   preservado para o Caddy escolher a rota correta.
 4. Deixe a Cloudflare criar/gerenciar os registros DNS do Tunnel. O domínio
    deve estar ativo na zona Cloudflare; não crie registros A apontando para a
    VPS para estes hostnames.
 
-O TLS público termina na Cloudflare. Entre `cloudflared` e Caddy, o Tunnel
-usa TLS interno; o Caddy continua encaminhando `/api/*` ao backend e o restante
-do hostname do app ao dashboard. A rede Docker do Tunnel não dá ao
-`cloudflared` acesso direto aos bancos nem aos demais serviços.
+O TLS público termina na Cloudflare. Entre `cloudflared` e Caddy, o tráfego
+usa HTTP dentro da rede Docker privada da stack, sem publicar a porta 80 no
+host. O Caddy continua encaminhando `/api/*` ao backend e o restante do
+hostname do app ao dashboard. A rede Docker do Tunnel não dá ao `cloudflared`
+acesso direto aos bancos nem aos demais serviços.
 
 Valide e suba a stack após configurar o token e as duas rotas:
 
