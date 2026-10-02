@@ -96,6 +96,29 @@ git merge --ff-only "$REMOTE/$BRANCH"
 compose build
 compose up -d
 
+# 2.5 O Caddyfile é bind mount: `compose up -d` não recria o container só
+#     porque o conteúdo do arquivo mudou (o compose compara a definição do
+#     serviço, não o arquivo montado), então o Caddy em execução continua
+#     com a config antiga carregada até alguém mandar recarregar. Reload é
+#     idempotente — rodar todo deploy, mesmo sem mudança no Caddyfile, não
+#     tem custo.
+caddy_reloaded=no
+i=1
+while [ "$i" -le 5 ]; do
+  if compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>&1; then
+    caddy_reloaded=yes
+    break
+  fi
+  sleep 2
+  i=$((i + 1))
+done
+
+if [ "$caddy_reloaded" != "yes" ]; then
+  log "FALHA: caddy reload não confirmou — a config em execução pode estar"
+  log "  desatualizada mesmo com o deploy aplicado. commit: $target"
+  exit 1
+fi
+
 # 3. smoke: /health por dentro da rede do compose. A imagem da api é
 #    distroless (sem wget/curl/shell) — o probe roda de dentro do caddy
 #    (Alpine, tem wget) contra api:8080 pela rede interna, a mesma rota
