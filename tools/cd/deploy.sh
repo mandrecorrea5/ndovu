@@ -96,12 +96,14 @@ git merge --ff-only "$REMOTE/$BRANCH"
 compose build
 compose up -d
 
-# 3. smoke: /health por dentro da rede do compose (distroless não tem curl;
-#    usa o wget do Alpine — precedência: jetstream-backlog.md)
+# 3. smoke: /health por dentro da rede do compose. A imagem da api é
+#    distroless (sem wget/curl/shell) — o probe roda de dentro do caddy
+#    (Alpine, tem wget) contra api:8080 pela rede interna, a mesma rota
+#    que o Caddyfile já usa pra fazer proxy de /api/*.
 api_ready=no
 i=1
 while [ "$i" -le 30 ]; do
-  if compose exec -T api wget -q -O- http://localhost:8080/health >/dev/null 2>&1; then
+  if compose exec -T caddy wget -q -O- http://api:8080/health >/dev/null 2>&1; then
     api_ready=yes
     break
   fi
