@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import './globals.css';
 import { AppShell } from '@/components/AppShell';
 import { Providers } from './providers';
@@ -8,7 +9,11 @@ export const metadata: Metadata = {
   description: 'Rastreamento de jornada de usuário em frontends',
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Lido para forçar renderização dinâmica: o nonce do CSP (middleware.ts)
+  // é por requisição, então a página não pode ser pré-renderizada estática.
+  await headers();
+
   return (
     <html lang="pt-BR">
       <body className="min-h-screen">

@@ -4,7 +4,6 @@ basic_auth {
 }
 header {
 	Strict-Transport-Security "max-age=63072000; includeSubDomains"
-	Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
 	X-Content-Type-Options "nosniff"
 	X-Frame-Options "DENY"
 	Referrer-Policy "strict-origin-when-cross-origin"
@@ -14,6 +13,8 @@ header {
 	-Server
 	-X-Powered-By
 }
+# Content-Security-Policy NÃO vai aqui: o dashboard (Next.js) monta o seu
+# próprio CSP com nonce por requisição em src/middleware.ts.
 encode zstd gzip
 handle /api/* {
 	uri strip_prefix /api
