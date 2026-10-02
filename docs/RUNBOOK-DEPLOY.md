@@ -1,15 +1,16 @@
 # Runbook — Deploy, update e rollback (VPS / Docker Compose)
 
 **Escopo:** a trilha de produção atual (VPS + `docker-compose.yml` +
-`docker-compose.prod.yml` + Caddy). A trilha OpenShift (`docs/openshift/`,
-`gitops/`) tem procedimento próprio — não a usamos agora.
+`docker-compose.prod.yml` + Cloudflare Tunnel + Caddy). A trilha OpenShift
+(`docs/openshift/`, `gitops/`) tem procedimento próprio — não a usamos agora.
 
 ## 1. Primeiro deploy (bootstrap) — na ordem
 
 Prerequisitos já validados localmente: `DEPLOY-VPS.md` inteiro +
-`.env.production` real (todos os segredos ≥ requisito, `chmod 600`) + DNS
-`A` dos 2 domínios apontando para a VPS + 3+1 buckets R2 com credenciais
-isoladas + identidades age PG/CH no cofre (não na VPS).
+`.env.production` real (todos os segredos ≥ requisito, `chmod 600`) + Tunnel
+criado na Cloudflare, token configurado e duas rotas públicas apontando para
+`https://caddy:443` + 3+1 buckets R2 com credenciais isoladas + identidades
+age PG/CH no cofre (não na VPS).
 
 ```bash
 cd /opt/ndovu
@@ -35,30 +36,22 @@ curl -sSf https://NDOVU_API_DOMAIN/health   # 200
    (`ndovu-postgres-backup.timer`) e confirme o 1º disparo no
    `journalctl -u ndovu-postgres-backup.service`.
 
-5. **Caddy:** o certificado ACME só emite com DNS correto. Primeiro
-   `curl -vI https://NDOVU_APP_DOMAIN` (esperado 200 com issuer Let's
-   Encrypt). Erros ACME: veja `docker compose logs caddy` antes de insistir
-   (rate limit do ACME é por domínio).
+5. **Tunnel:** confirme `docker compose logs cloudflared` sem erros de conexão
+   e teste `curl -vI https://NDOVU_APP_DOMAIN` e
+   `curl -sSf https://NDOVU_API_DOMAIN/health`. Os certificados públicos são
+   gerenciados pela Cloudflare; o Caddy usa TLS interno na origem.
 
-### 1.5 Primeira subida sem domínio (IP direto da VPS)
+### 1.5 Acesso público pelo Tunnel
 
-Enquanto o domínio não estiver provisionado, a VPS pode ser publicada **por
-IP** com segurança, via `NDOVU_BOOTSTRAP_IPS` (IPs separados por vírgula) +
-`NDOVU_BOOTSTRAP_PASSWORD_HASH` (hash da senha de bootstrap). O Caddy serve
-cada IP com **TLS auto-signado** (o browser vai alertar — esperado) e
-**Basic Auth global**. A API Go continua autenticando a ingestão por
-`X-Api-Key` normalmente.
+O Ndovu não publica as portas do Caddy na VPS. Acesso público requer domínio
+na zona Cloudflare, Tunnel conectado e rotas do app e da API configuradas
+conforme `DEPLOY-VPS.md`. Não use o IP da VPS como hostname público nem
+publique `8443` como alternativa.
 
-Limites deste perfil (e por que é transitório):
-- **Sem ACME** — o browser não confia no certificado interno. SDKs de
-  produção **não** devem apontar para `https://IP` (validação de certificado
-  falha).
-- **Uma única senha global** — sem isolamento por usuário; é a chave-mestra
-  da VPS.
-- Ao apontar o DNS: esvaziar `NDOVU_BOOTSTRAP_IPS` e remover o hash → os
-  blocos por IP somem e só os domínios atendem.
-- **Regra:** a VPS nunca sobe sem domínio **nem** sem bootstrap — a
-  ausência dos dois derruba a stack (protegido no Caddyfile).
+Se a rota não funcionar, confira primeiro o estado do Tunnel no painel e os
+logs do conector. Para cada hostname, confirme `Origin Server Name` igual ao
+hostname e **No TLS Verify** ativado: o Caddy apresenta certificado emitido
+pela CA interna.
 
 ## 2. Update de versão (rotina)
 
@@ -111,4 +104,6 @@ docker compose --env-file .env.production \
   `NumPending` (runbook `jetstream-backlog.md`).
 - **`/metrics` exige Basic Auth no Caddy** (`NDOVU_METRICS_PASSWORD_HASH`,
   usuário `metrics`). Prometheus/scrape envia o header; um browser não
-  manda auth em navegação — use o proxy do monitoramento.
+  manda auth em navegação — use o proxy do monitoramento. Se for necessário
+  acessar a origem diretamente para diagnóstico, faça isso pela rede Docker;
+  Caddy e cloudflared não publicam portas web no host.

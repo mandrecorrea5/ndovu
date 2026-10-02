@@ -3,20 +3,12 @@ services:
     image: caddy:2.10-alpine
     restart: unless-stopped
     environment:
-      NDOVU_APP_DOMAIN: "${NDOVU_APP_DOMAIN-}"
-      NDOVU_AUTO_HTTPS: "${NDOVU_AUTO_HTTPS-auto_https off}"
-      NDOVU_TRUST: "${NDOVU_TRUST-skip_install_trust}"
-      NDOVU_TLS_MODE: "${NDOVU_TLS_MODE-internal}"
-      NDOVU_TLS_EMAIL: "${NDOVU_TLS_EMAIL:?Set NDOVU_TLS_EMAIL}"
+      NDOVU_APP_DOMAIN: "${NDOVU_APP_DOMAIN:?Set NDOVU_APP_DOMAIN}"
+      NDOVU_API_DOMAIN: "${NDOVU_API_DOMAIN:?Set NDOVU_API_DOMAIN}"
       # Basic Auth de /metrics (usuário ndovu). Hash bcrypt
       # (caddy hash-password) — a senha clara vive só no cofre do monitoramento.
       NDOVU_METRICS_PASSWORD_HASH: "${NDOVU_METRICS_PASSWORD_HASH:?Set NDOVU_METRICS_PASSWORD_HASH}"
-    # 80/443 nesta VPS estão com a stack StayCloud/Traefik (GMZ).
-    # Para a 1ª subida sem domínio, só o 8443 é publicado — é por ele
-    # que o smoke e o ingest passam (http→https redirect não funciona
-    # atrás de Traefik).
-    ports: !override
-      - "8443:443"
+    ports: !override []
     volumes:
       - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ./infra/caddy/bootstrap-body:/etc/caddy/bootstrap-body:ro
@@ -24,6 +16,9 @@ services:
       - ./infra/caddy/site-body-api:/etc/caddy/site-body-api:ro
       - caddy_data:/data
       - caddy_config:/config
+    networks:
+      - default
+      - tunnel
     depends_on:
       # Caddy sobe com a stack funcional atrás. O proxy do dashboard usa a
       # URL interna http://api:8080 (rede do compose), então a ordem real é
@@ -33,12 +28,28 @@ services:
       dashboard:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:2019/"]
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:2019/config/"]
       interval: 15s
       timeout: 3s
       retries: 3
       start_period: 20s
     # 2019 (admin API) é localhost-only dentro do container; nada publicado.
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: "${NDOVU_CLOUDFLARED_TUNNEL_TOKEN:?Set NDOVU_CLOUDFLARED_TUNNEL_TOKEN}"
+    depends_on:
+      caddy:
+        condition: service_healthy
+    networks:
+      - tunnel
     deploy:
       resources:
         limits:
@@ -258,3 +269,6 @@ services:
 volumes:
   caddy_data:
   caddy_config:
+
+networks:
+  tunnel:

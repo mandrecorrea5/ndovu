@@ -23,8 +23,8 @@ de desenvolvimento.
 | `NDOVU_ADMIN_EMAIL`, `NDOVU_ADMIN_PASSWORD` | Conta inicial; senha com pelo menos 12 caracteres. A conta só é criada quando ainda não há usuários; em bancos existentes, a variável não redefine a senha. |
 | `NDOVU_CORS_ORIGINS` | Lista separada por vírgulas das origens exatas que acessam a API **direto do browser** (SDKs de clientes web), todas com `https://`; não use `*`. O dashboard não precisa constar: ele é same-origin com o BFF e chama a API pela rede interna do Compose. |
 | `NEXT_PUBLIC_NDOVU_API` | Mantida apenas por compatibilidade de build. O dashboard é **same-origin**: a UI chama `/api/*` do próprio Next (BFF), e o BFF chama a API via rede interna (`NDOVU_API=http://api:8080`, já fixo no Compose de produção). O token não transita mais pelo browser. |
-| `NDOVU_APP_DOMAIN`, `NDOVU_API_DOMAIN` | Domínios públicos do dashboard e da API, usados pelo Caddy. |
-| `NDOVU_TLS_EMAIL` | E-mail para avisos do ACME/Let's Encrypt. |
+| `NDOVU_APP_DOMAIN`, `NDOVU_API_DOMAIN` | Hostnames públicos do dashboard e da API, cadastrados no Cloudflare Tunnel e roteados pelo Caddy. |
+| `NDOVU_CLOUDFLARED_TUNNEL_TOKEN` | Token secreto do Tunnel criado no Cloudflare Zero Trust. Guarde no `.env.production` (ou nas variáveis protegidas da stack no Portainer), nunca no Git. |
 | `NDOVU_S3_ENDPOINT`, `NDOVU_S3_ACCESS_KEY`, `NDOVU_S3_SECRET_KEY`, `NDOVU_SNAPSHOT_BUCKET` | Credenciais e bucket privados de snapshots. `NDOVU_S3_USE_SSL` é forçado a `true` no perfil de produção. |
 | `NDOVU_CLICKHOUSE_S3_ENDPOINT`, `NDOVU_CLICKHOUSE_S3_ACCESS_KEY`, `NDOVU_CLICKHOUSE_S3_SECRET_KEY` | Credenciais próprias do cold tier do ClickHouse. Use um bucket R2 separado, como `ndovu-cold`; o endpoint deve terminar com `/ndovu-cold/`. |
 | `NDOVU_PG_BACKUP_S3_ENDPOINT`, `NDOVU_PG_BACKUP_S3_ACCESS_KEY`, `NDOVU_PG_BACKUP_S3_SECRET_KEY`, `NDOVU_PG_BACKUP_BUCKET` | Credenciais exclusivas do bucket `ndovu-prod-backups`; o endpoint HTTPS do R2 deve apontar para a conta. |
@@ -48,18 +48,55 @@ segredos ausentes/fracos, senha padrão, CORS wildcard ou storage de snapshots
 sem TLS. O writer valida apenas as credenciais de banco que realmente usa e
 não recebe os segredos exclusivos da API/R2.
 
-## Rede e HTTPS preparados
+## Cloudflare Tunnel, rede e HTTPS
 
-O overlay `docker-compose.prod.yml` remove as portas públicas de Postgres,
-ClickHouse, NATS, MinIO, API e dashboard. O único serviço publicado é o Caddy,
-nas portas 80/443, encaminhando:
+O overlay `docker-compose.prod.yml` não publica portas da aplicação na VPS.
+O `cloudflared` inicia conexões de saída para a Cloudflare e alcança o Caddy
+por uma rede Docker dedicada; somente o Caddy participa também da rede interna
+dos serviços Ndovu. Não é necessário abrir portas de entrada 80/443 nem
+8443 para o Ndovu, nem apontar um registro DNS para o IP público da VPS.
 
-- `NDOVU_APP_DOMAIN` → `dashboard:3000`;
-- `NDOVU_API_DOMAIN` → `api:8080`.
+### Criar e configurar o Tunnel
 
-O Caddy solicita e renova certificados automaticamente via ACME quando os
-domínios estiverem apontados para a VPS. Antes disso, não inicie o perfil
-publicamente: os domínios de exemplo não emitirão certificados úteis.
+1. No Cloudflare Zero Trust, crie um Tunnel do tipo **Cloudflared** e copie o
+   token. Configure `NDOVU_CLOUDFLARED_TUNNEL_TOKEN` no `.env.production` da
+   VPS, com permissões `600`, ou nas variáveis protegidas da stack no Portainer.
+   Não cole o token em arquivos versionados nem o compartilhe em logs.
+2. Nas rotas públicas do Tunnel, cadastre os dois hostnames, usando como
+   serviço de origem `https://caddy:443`:
+   - `NDOVU_APP_DOMAIN` → `https://caddy:443`;
+   - `NDOVU_API_DOMAIN` → `https://caddy:443`.
+3. Em **Additional application settings → TLS** de cada rota, configure
+   **Origin Server Name** com o hostname público daquela rota e habilite
+   **No TLS Verify**. O Caddy usa sua CA interna, não confiada publicamente;
+   o tráfego entre o conector e o Caddy continua criptografado, mas a
+   identidade do certificado de origem não é validada. O Host HTTP original
+   deve ser preservado para o Caddy escolher a rota correta.
+4. Deixe a Cloudflare criar/gerenciar os registros DNS do Tunnel. O domínio
+   deve estar ativo na zona Cloudflare; não crie registros A apontando para a
+   VPS para estes hostnames.
+
+O TLS público termina na Cloudflare. Entre `cloudflared` e Caddy, o Tunnel
+usa TLS interno; o Caddy continua encaminhando `/api/*` ao backend e o restante
+do hostname do app ao dashboard. A rede Docker do Tunnel não dá ao
+`cloudflared` acesso direto aos bancos nem aos demais serviços.
+
+Valide e suba a stack após configurar o token e as duas rotas:
+
+```bash
+docker compose --env-file .env.production \
+  -f docker-compose.yml -f docker-compose.prod.yml config --quiet
+docker compose --env-file .env.production \
+  -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+docker compose --env-file .env.production \
+  -f docker-compose.yml -f docker-compose.prod.yml logs --tail=100 cloudflared caddy
+curl -sSf https://NDOVU_API_DOMAIN/health
+```
+
+As portas de entrada e regras de firewall de outros serviços da VPS não devem
+ser alteradas como parte desta configuração. Para o Tunnel funcionar, o
+container `cloudflared` precisa poder acessar a Internet para estabelecer suas
+conexões de saída.
 
 **`/metrics` protegido:** a rota de métricas da API (contadores de
 tráfego/erros) exige Basic Auth no Caddy — usuário `ndovu`, senha cujo
@@ -75,20 +112,6 @@ rate limit — a proteção de ingestão vive na API Go (token bucket por
 `rate_limit` ao Caddyfile sem validar a disponibilidade do módulo na
 versão pinada (a config é validada no boot e o Caddy não sobe com
 diretiva desconhecida).
-
-Quando o DNS estiver pronto, confirme que 80 e 443 chegam à VPS, preencha os
-domínios reais e valide:
-
-```bash
-docker compose --env-file .env.production \
-  -f docker-compose.yml -f docker-compose.prod.yml config --quiet
-docker compose --env-file .env.production \
-  -f docker-compose.yml -f docker-compose.prod.yml up -d --build
-```
-
-As portas de administração dos serviços permanecem acessíveis apenas dentro
-da rede Docker. O firewall da VPS ainda deve permitir somente SSH
-administrativo e TCP 80/443; essa regra é externa ao Compose.
 
 ## Cold tier do ClickHouse no R2
 
