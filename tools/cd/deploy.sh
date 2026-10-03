@@ -43,6 +43,63 @@ compose() {
     -f docker-compose.yml -f docker-compose.prod.yml "$@"
 }
 
+publish_deploy_status() {
+  status_sha=$1
+  status_state=$2
+  status_description=$3
+
+  status_token=$(awk -F= '
+    $1 == "NDOVU_GITHUB_STATUS_TOKEN" {
+      sub(/^[^=]*=/, "")
+      sub(/\r$/, "")
+      print
+      exit
+    }
+  ' .env.production)
+  if [ -z "$status_token" ]; then
+    log "ERRO: NDOVU_GITHUB_STATUS_TOKEN ausente em .env.production"
+    return 1
+  fi
+
+  remote_url=$(git remote get-url "$REMOTE")
+  case "$remote_url" in
+    git@github.com:*) repository=${remote_url#git@github.com:} ;;
+    https://github.com/*) repository=${remote_url#https://github.com/} ;;
+    *)
+      log "ERRO: remoto $REMOTE não aponta para github.com; não é possível publicar status"
+      return 1
+      ;;
+  esac
+  repository=${repository%.git}
+  case "$repository" in
+    */*) ;;
+    *)
+      log "ERRO: URL do remoto GitHub inválida"
+      return 1
+      ;;
+  esac
+
+  if ! curl --config - <<EOF
+fail
+silent
+show-error
+connect-timeout = 10
+max-time = 30
+request = "POST"
+header = "Accept: application/vnd.github+json"
+header = "Authorization: Bearer $status_token"
+header = "X-GitHub-Api-Version: 2022-11-28"
+url = "https://api.github.com/repos/$repository/statuses/$status_sha"
+data = "{\"state\":\"$status_state\",\"context\":\"ndovu/deploy\",\"description\":\"$status_description\"}"
+output = "/dev/null"
+EOF
+  then
+    log "ERRO: GitHub não aceitou o status $status_state para $status_sha"
+    return 1
+  fi
+  log "status GitHub '$status_state' publicado para $status_sha"
+}
+
 # --- estado de referência ----------------------------------------------------
 mkdir -p "$CD_DIR"
 if [ ! -f "$CD_DIR/deployed-sha" ]; then
@@ -51,32 +108,55 @@ if [ ! -f "$CD_DIR/deployed-sha" ]; then
 fi
 deployed=$(cat "$CD_DIR/deployed-sha")
 
-git fetch --quiet "$REMOTE"
+git fetch --quiet --tags "$REMOTE"
+target=$(git rev-parse "$REMOTE/$BRANCH")
 
 # --- proteção de migration ---------------------------------------------------
 # A app auto-aplica migrations no boot (idempotente), e elas são via-forward.
 # Por isso a aplicação NUNCA é atualizada com um deploy automático quando há
-# migration no caminho: o gate é a marca manual de release no GitHub
-# (deploy-release). O CD avisa, marca o SHA pulado (não fica pedindo para
-# sempre) e sai sem tocar no stack.
+# migration no caminho sem aprovação manual no GitHub. O workflow cria uma
+# tag imutável para o SHA aprovado; a VPS mantém o pull-only e executa backups.
+approved=no
 if git diff --name-only "$deployed".."$REMOTE/$BRANCH" -- \
     backend/internal/adapter/clickhouse/schema.sql \
     backend/internal/adapter/ctlpostgres 2>/dev/null | grep -q .; then
-  target=$(git rev-parse "$REMOTE/$BRANCH")
-  if [ "$(cat "$CD_DIR/skipped-sha" 2>/dev/null)" = "$target" ]; then
-    log "migration pendente no $target — já avisado, esperando release manual"
+  approval_tag="deploy-approved-$target"
+  if git show-ref --verify --quiet "refs/tags/$approval_tag"; then
+    approved_sha=$(git rev-parse "$approval_tag^{commit}")
+    if [ "$approved_sha" != "$target" ]; then
+      log "ERRO: tag $approval_tag aponta para $approved_sha em vez de $target"
+      exit 1
+    fi
+    approved=yes
+  fi
+  if [ "$approved" != "yes" ]; then
+    if [ "$(cat "$CD_DIR/skipped-sha" 2>/dev/null)" != "$target" ]; then
+      log "ATENÇÃO: migration entre $deployed e $target."
+      log "  Aguardando aprovação manual pelo workflow 'Approve migration deploy'."
+      printf '%s\n' "$target" > "$CD_DIR/skipped-sha"
+    else
+      log "migration pendente no $target — aguardando aprovação manual no GitHub"
+    fi
     exit 0
   fi
-  log "ATENÇÃO: migration entre $deployed e $target (schema.sql/ctlpostgres)."
-  log "  O deploy automático NÃO aplica migrations: confirme o backup dos 2"
-  log "  bancos e publique o release no GitHub (deploy-release) para aplicar."
-  printf '%s\n' "$target" > "$CD_DIR/skipped-sha"
-  exit 0
 fi
 
 # --- nada novo? ---------------------------------------------------------------
-target=$(git rev-parse "$REMOTE/$BRANCH")
 if [ "$target" = "$deployed" ]; then
+  approval_tag="deploy-approved-$target"
+  if git show-ref --verify --quiet "refs/tags/$approval_tag"; then
+    approved_sha=$(git rev-parse "$approval_tag^{commit}")
+    if [ "$approved_sha" != "$target" ]; then
+      log "ERRO: tag $approval_tag aponta para $approved_sha em vez de $target"
+      exit 1
+    fi
+    if compose exec -T caddy wget -q -O- http://api:8080/health >/dev/null 2>&1; then
+      publish_deploy_status "$target" success "Deploy aplicado; health check passou"
+    else
+      log "ERRO: SHA aprovado consta como aplicado, mas o health check falhou"
+      exit 1
+    fi
+  fi
   exit 0
 fi
 
@@ -91,7 +171,30 @@ log "deploy: $deployed -> $target"
 # 1. composition valida sem subir nada (segredo fraco recusaria o boot)
 compose config --quiet
 
-# 2. aplica
+# 2. Releases com migration só são aplicados após backup confirmado dos dois
+# bancos. A chave de cifra é necessária para que a API inicie após a migration.
+if [ "$approved" = "yes" ]; then
+  if ! awk -F= '
+    /^NDOVU_API_KEY_ENC_KEY=/ {
+      value = substr($0, index($0, "=") + 1)
+    }
+    END {
+      if (length(value) >= 32 && value !~ /[[:space:]#]/ && value !~ /^CHANGE_ME/) exit 0
+      exit 1
+    }
+  ' .env.production; then
+    log "ERRO: NDOVU_API_KEY_ENC_KEY ausente ou inválida em .env.production"
+    exit 1
+  fi
+  publish_deploy_status "$target" pending "Aprovado; aguardando backups e health check"
+  log "migration aprovada; executando backup do PostgreSQL"
+  compose --profile backup run --build --rm postgres-backup
+  log "backup do PostgreSQL confirmado; executando backup do ClickHouse"
+  compose --profile backup run --build --rm clickhouse-backup
+  log "backups dos dois bancos confirmados"
+fi
+
+# 3. aplica
 git merge --ff-only "$REMOTE/$BRANCH"
 compose build
 compose up -d
@@ -148,3 +251,6 @@ fi
 printf '%s\n' "$target" > "$CD_DIR/deployed-sha"
 rm -f "$CD_DIR/skipped-sha"
 log "deploy ok: $target (/health 200; serviços: $services)"
+if [ "$approved" = "yes" ]; then
+  publish_deploy_status "$target" success "Deploy aplicado; health check passou"
+fi

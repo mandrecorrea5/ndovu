@@ -1,0 +1,102 @@
+name: Approve migration deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Exact SHA of the current origin/main commit to approve
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+  statuses: read
+
+concurrency:
+  group: approve-migration-deploy
+  cancel-in-progress: false
+
+jobs:
+  approve:
+    name: Approve production migration deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Require workflow run from main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Run this workflow from the main branch"
+          exit 1
+
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Publish immutable approval tag
+        env:
+          APPROVAL_SHA: ${{ inputs.commit_sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$APPROVAL_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::commit_sha must be a 40-character lowercase Git SHA"
+            exit 1
+          fi
+
+          git fetch --quiet origin main --tags
+          main_sha="$(git rev-parse origin/main)"
+          if [[ "$APPROVAL_SHA" != "$main_sha" ]]; then
+            echo "::error::Only the current origin/main tip can be approved (current: $main_sha)"
+            exit 1
+          fi
+
+          runs="$(gh run list --workflow ci.yml --branch main --commit "$APPROVAL_SHA" \
+            --json conclusion,event --limit 20)"
+          if ! jq -e '[.[] | select(.event == "push")] | first | .conclusion == "success"' \
+            <<<"$runs" >/dev/null; then
+            echo "::error::The latest CI run for this main commit must succeed before approval"
+            exit 1
+          fi
+
+          tag="deploy-approved-$APPROVAL_SHA"
+          if git fetch --quiet origin "refs/tags/$tag:refs/tags/$tag"; then
+            approved_sha="$(git rev-parse "$tag^{commit}")"
+            if [[ "$approved_sha" != "$APPROVAL_SHA" ]]; then
+              echo "::error::Existing approval tag $tag points to $approved_sha"
+              exit 1
+            fi
+            echo "Reusing existing approval for $APPROVAL_SHA."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag --annotate "$tag" "$APPROVAL_SHA" \
+              --message "Manual production deploy approval for $APPROVAL_SHA"
+            git push origin "refs/tags/$tag"
+          fi
+
+          echo "Approved $APPROVAL_SHA. Waiting for the VPS timer to deploy and report success."
+
+          deadline=$((SECONDS + 21000))
+          while (( SECONDS < deadline )); do
+            state="$(gh api \
+              "repos/$GITHUB_REPOSITORY/commits/$APPROVAL_SHA/status" \
+              --jq '[.statuses[] | select(.context == "ndovu/deploy")][0].state // ""')"
+            if [[ "$state" == "success" ]]; then
+              echo "The VPS deployed $APPROVAL_SHA and its health check passed."
+              exit 0
+            fi
+            if [[ "$state" == "failure" || "$state" == "error" ]]; then
+              echo "::error::The VPS reported deploy state '$state' for $APPROVAL_SHA"
+              exit 1
+            fi
+            echo "VPS status is '${state:-not reported yet}'; checking again in 60 seconds."
+            sleep 60
+          done
+
+          echo "::error::Timed out waiting for the VPS timer. The approval remains available for retry."
+          exit 1

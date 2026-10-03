@@ -20,6 +20,7 @@ de desenvolvimento.
 | `CLICKHOUSE_DB`, `CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD` | Credenciais próprias; a senha não pode ser `ndovu`. |
 | `NDOVU_AUTH_SECRET` | Segredo aleatório com pelo menos 32 caracteres. Gere, por exemplo, com `openssl rand -hex 32`. Trocar esse segredo invalida todos os JWTs ativos. |
 | `NDOVU_API_KEY_ENC_KEY` | Chave aleatória estável (mínimo 32 caracteres), gerada com `openssl rand -hex 32`, para cifrar chaves de ingestão recuperáveis. Faça backup seguro e não a rotacione sem recifrar o histórico. |
+| `NDOVU_GITHUB_STATUS_TOKEN` | Fine-grained GitHub token da VPS, restrito ao repositório Ndovu e à permissão **Commit statuses: read and write**. Usado pelo timer para confirmar o deploy do SHA aprovado; mantenha somente no `.env.production` com modo `600`. |
 | `NDOVU_SESSION_ENC_KEY` | Chave AES-256 usada pelo BFF do dashboard para cifrar o cookie httpOnly de sessão. Gere com `openssl rand -hex 16` (≥ 32 caracteres). A API recusa iniciar sem ela em produção. Trocar derruba todas as sessões do dashboard (JWTs já emitidos continuam válidos até o `exp`). |
 | `NDOVU_ADMIN_EMAIL`, `NDOVU_ADMIN_PASSWORD` | Conta inicial; senha com pelo menos 12 caracteres. A conta só é criada quando ainda não há usuários; em bancos existentes, a variável não redefine a senha. |
 | `NDOVU_CORS_ORIGINS` | Lista separada por vírgulas das origens exatas que acessam a API **direto do browser** (SDKs de clientes web), todas com `https://`; não use `*`. O dashboard não precisa constar: ele é same-origin com o BFF e chama a API pela rede interna do Compose. |
