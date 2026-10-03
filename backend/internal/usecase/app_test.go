@@ -95,7 +95,7 @@ func (f *fakeAppKeyStore) FindActiveKeyByHash(_ context.Context, _ string) (doma
 }
 
 func newTestAppService(apps *fakeAppStore, keys *fakeAppKeyStore) *AppService {
-	return NewAppService(apps, NewAPIKeyService(keys, 0, 0, slog.Default()), slog.Default())
+	return NewAppService(apps, NewAPIKeyService(keys, 0, 0, slog.Default(), "test-secret"), slog.Default())
 }
 
 func TestAppCreateGeraChave(t *testing.T) {

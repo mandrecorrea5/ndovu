@@ -96,7 +96,7 @@ func run() error {
 	// Wiring explícito (composition root)
 	metrics := platform.NewMetrics()
 	authSvc := usecase.NewAuthService(ctl, ctl, cfg.AuthSecret, cfg.AuthTokenTTL, logger)
-	keySvc := usecase.NewAPIKeyService(ctl, cfg.KeyCacheTTL, cfg.IngestRateRPS, logger)
+	keySvc := usecase.NewAPIKeyService(ctl, cfg.KeyCacheTTL, cfg.IngestRateRPS, logger, cfg.APIKeyEncKey)
 	appSvc := usecase.NewAppService(ctl, keySvc, logger)
 	companySvc := usecase.NewCompanyService(ctl, logger)
 	issueSvc := usecase.NewIssueService(repo, ctl)

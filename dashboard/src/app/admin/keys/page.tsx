@@ -20,6 +20,7 @@ export default function AdminKeysPage() {
   const [form, setForm] = useState<FormState>(EMPTY);
   const [created, setCreated] = useState<CreatedApiKey | null>(null);
   const [feedback, setFeedback] = useState('');
+  const [revealed, setRevealed] = useState<Record<string, boolean>>({});
 
   const openNew = () => {
     setForm(EMPTY);
@@ -44,6 +45,12 @@ export default function AdminKeysPage() {
     onError: (err) => setFeedback(err instanceof ApiError ? err.message : 'Erro ao revogar'),
   });
 
+  const rotate = (app: string, label?: string) => {
+    setForm({ app, label: label ?? '' });
+    setFeedback('');
+    setOpen(true);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -51,7 +58,8 @@ export default function AdminKeysPage() {
           <h1 className="text-xl font-semibold">Chaves de API</h1>
           <p className="text-sm text-ink-2">
             Cada frontend emissor usa a própria chave no header <code className="mono">X-Api-Key</code>.
-            A chave só aparece em claro na criação — guardamos apenas o hash.
+            As chaves ficam cifradas e disponíveis para consulta administrativa. Gerar uma nova
+            revoga a ativa anterior e preserva o histórico.
           </p>
         </div>
         <Button variant="primary" onClick={openNew} icon="+">
@@ -62,8 +70,8 @@ export default function AdminKeysPage() {
       {created ? (
         <div className="card border-good/40 px-4 py-3">
           <p className="text-sm font-medium">
-            Chave criada para <span className="mono">{created.app}</span> — copie agora, ela não
-            será exibida de novo:
+            Chave criada para <span className="mono">{created.app}</span>. Ela também ficará
+            disponível no histórico abaixo:
           </p>
           <div className="mt-2 flex items-center gap-2">
             <code className="mono flex-1 overflow-x-auto rounded-md bg-plane px-3 py-2 text-xs">
@@ -85,14 +93,15 @@ export default function AdminKeysPage() {
 
       {data ? (
         <div className="card overflow-x-auto">
-          <table className="w-full min-w-[720px] text-sm">
+          <table className="w-full min-w-[980px] text-sm">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-muted">
                 <th className="px-3 py-2 font-medium">App</th>
                 <th className="px-3 py-2 font-medium">Descrição</th>
-                <th className="px-3 py-2 font-medium">Prefixo</th>
+                <th className="px-3 py-2 font-medium">Chave</th>
                 <th className="px-3 py-2 font-medium">Status</th>
                 <th className="px-3 py-2 font-medium">Criada em</th>
+                <th className="px-3 py-2 font-medium">Revogada em</th>
                 <th className="px-3 py-2 font-medium">Ações</th>
               </tr>
             </thead>
@@ -103,7 +112,28 @@ export default function AdminKeysPage() {
                   <td className="max-w-56 truncate px-3 py-2 text-xs text-ink-2">
                     {k.label || '—'}
                   </td>
-                  <td className="mono px-3 py-2 text-xs">{k.prefix}…</td>
+                  <td className="px-3 py-2">
+                    {k.key ? (
+                      <div className="flex items-center gap-1">
+                        <code className="mono max-w-56 truncate text-xs">
+                          {revealed[k.id] ? k.key : `${k.prefix}…`}
+                        </code>
+                        <Button
+                          size="sm"
+                          onClick={() =>
+                            setRevealed((state) => ({ ...state, [k.id]: !state[k.id] }))
+                          }
+                        >
+                          {revealed[k.id] ? 'ocultar' : 'ver'}
+                        </Button>
+                        <Button size="sm" onClick={() => navigator.clipboard?.writeText(k.key!)}>
+                          copiar
+                        </Button>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted">não recuperável (chave antiga)</span>
+                    )}
+                  </td>
                   <td className="px-3 py-2">
                     {k.active ? (
                       <span className="text-good">● ativa</span>
@@ -116,23 +146,31 @@ export default function AdminKeysPage() {
                   <td className="tabular whitespace-nowrap px-3 py-2 text-xs text-ink-2">
                     {fmtDateTime(k.createdAt)}
                   </td>
+                  <td className="tabular whitespace-nowrap px-3 py-2 text-xs text-ink-2">
+                    {k.revokedAt ? fmtDateTime(k.revokedAt) : '—'}
+                  </td>
                   <td className="px-3 py-2">
                     {k.active ? (
-                      <Button
-                        size="sm"
-                        variant="danger"
-                        loading={revoke.isPending}
-                        onClick={() => revoke.mutate(k.id)}
-                      >
-                        revogar
-                      </Button>
+                      <div className="flex gap-1">
+                        <Button
+                          size="sm"
+                          variant="danger"
+                          loading={revoke.isPending}
+                          onClick={() => revoke.mutate(k.id)}
+                        >
+                          revogar
+                        </Button>
+                        <Button size="sm" loading={create.isPending} onClick={() => rotate(k.app, k.label)}>
+                          gerar nova
+                        </Button>
+                      </div>
                     ) : null}
                   </td>
                 </tr>
               ))}
               {data.keys.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-3 py-8 text-center text-muted">
+                  <td colSpan={7} className="px-3 py-8 text-center text-muted">
                     Nenhuma chave ainda — comece pelo botão “Nova chave”.
                   </td>
                 </tr>
@@ -146,7 +184,7 @@ export default function AdminKeysPage() {
         open={open}
         onClose={() => setOpen(false)}
         title="Nova chave de API"
-        description="Chave vinculada a um app emissor. Exibida uma única vez em claro."
+        description="A chave será armazenada cifrada no histórico. A chave ativa anterior deste app será revogada."
         size="sm"
       >
         <form

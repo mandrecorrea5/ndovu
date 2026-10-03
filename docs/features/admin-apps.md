@@ -29,8 +29,8 @@ primeira chave de API** para o time integrador começar a enviar eventos.
    - **Empresa** — selecione uma empresa ativa; se preferir digitar,
      deixe o select em branco e use o input de fallback.
    - **Responsável** (e-mail do owner).
-3. Ao salvar, aparece um card verde com a **chave gerada em claro** —
-   copie na hora, ela não volta a ser exibida.
+3. Ao salvar, aparece um card verde com a **chave gerada em claro**.
+   Ela também fica disponível cifrada no histórico em `/admin/keys`.
 4. Use **editar** para trocar tecnologia/empresa/responsável.
    **excluir** revoga todas as chaves do app antes de removê-lo (com
    confirmação: "Todas as chaves dele serão revogadas.").
@@ -38,7 +38,7 @@ primeira chave de API** para o time integrador começar a enviar eventos.
 ## O que você vê
 
 - Cabeçalho **Apps** com botão **+ Novo app**.
-- Card verde após criação com a chave copiável (só uma vez).
+- Card verde após criação com a chave copiável e link para o histórico.
 - Tabela com **Nome**, **Tecnologia**, **Empresa**, **Responsável**,
   **Criado em** e **Ações** (editar/excluir).
 - Estado vazio: "Nenhum app cadastrado — comece pelo botão 'Novo app'."
@@ -80,8 +80,8 @@ Roteiro de 60s:
 ## Perguntas frequentes
 
 - **"Perdi a chave que apareceu na criação — como recupero?"**  
-  Não é possível. Gere uma nova em `/admin/keys` e revogue a antiga.
-  O Ndovu guarda só o hash — não há como reexibir em claro.
+  Consulte-a em `/admin/keys`. Chaves criadas antes do armazenamento
+  cifrado não podem ser recuperadas; gere uma nova para esses casos.
 - **"O que acontece com os eventos já ingeridos se eu excluir o app?"**  
   Os eventos históricos permanecem no ClickHouse (imutáveis), mas as
   chaves são revogadas — nada novo entra em nome desse app.

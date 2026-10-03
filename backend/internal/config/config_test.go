@@ -8,6 +8,7 @@ func validProductionConfig() Config {
 		AuthSecret:         "0123456789abcdef0123456789abcdef",
 		AdminEmail:         "admin@example.com",
 		AdminPassword:      "a-strong-password",
+		APIKeyEncKey:       "0123456789abcdef0123456789abcdef",
 		ClickHousePassword: "clickhouse-password",
 		PostgresURL:        "postgres://ndovu:postgres-password@postgres:5432/ndovu?sslmode=disable",
 		CORSOrigins:        "https://ndovu.example.com,https://app.example.com",
@@ -43,6 +44,7 @@ func TestLoadProductionDoesNotSetBootstrapIngestKey(t *testing.T) {
 	t.Setenv("NDOVU_AUTH_SECRET", "0123456789abcdef0123456789abcdef")
 	t.Setenv("NDOVU_ADMIN_EMAIL", "admin@example.com")
 	t.Setenv("NDOVU_ADMIN_PASSWORD", "a-strong-password")
+	t.Setenv("NDOVU_API_KEY_ENC_KEY", "0123456789abcdef0123456789abcdef")
 	t.Setenv("NDOVU_CORS_ORIGINS", "https://ndovu.example.com")
 	t.Setenv("NDOVU_CLICKHOUSE_PASSWORD", "clickhouse-password")
 	t.Setenv("NDOVU_POSTGRES_URL", "postgres://ndovu:postgres-password@postgres:5432/ndovu")
@@ -85,6 +87,7 @@ func TestValidateProductionRejectsInsecureSettings(t *testing.T) {
 		mutate func(*Config)
 	}{
 		{"segredo JWT padrão", func(c *Config) { c.AuthSecret = "dev-secret-troque-em-producao" }},
+		{"chave de cifragem de API curta", func(c *Config) { c.APIKeyEncKey = "curta" }},
 		{"senha admin curta", func(c *Config) { c.AdminPassword = "curta" }},
 		{"senha ClickHouse padrão", func(c *Config) { c.ClickHousePassword = "ndovu" }},
 		{"senha Postgres padrão", func(c *Config) { c.PostgresURL = "postgres://ndovu:ndovu@postgres:5432/ndovu" }},

@@ -31,6 +31,13 @@ func newFakeAPIKeyStore() *fakeAPIKeyStore {
 func (f *fakeAPIKeyStore) CreateAPIKey(_ context.Context, k domain.APIKey, hash, _ string) (domain.APIKey, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	for i := range f.keys {
+		if k.AppID != "" && f.keys[i].AppID == k.AppID && f.keys[i].Active {
+			f.keys[i].Active = false
+			revokedAt := time.Now()
+			f.keys[i].RevokedAt = &revokedAt
+		}
+	}
 	f.seq++
 	k.ID = string(rune('A' + f.seq))
 	k.Active = true
@@ -71,6 +78,8 @@ func (f *fakeAPIKeyStore) RevokeAPIKey(_ context.Context, id string) error {
 	for i, k := range f.keys {
 		if k.ID == id {
 			f.keys[i].Active = false
+			revokedAt := time.Now()
+			f.keys[i].RevokedAt = &revokedAt
 			return nil
 		}
 	}
@@ -94,7 +103,7 @@ func (f *fakeAPIKeyStore) FindActiveKeyByHash(_ context.Context, hash string) (d
 func newAPIKeySvc(rateRPS float64) (*APIKeyService, *fakeAPIKeyStore) {
 	store := newFakeAPIKeyStore()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return NewAPIKeyService(store, 100*time.Millisecond, rateRPS, logger), store
+	return NewAPIKeyService(store, 100*time.Millisecond, rateRPS, logger, "test-secret"), store
 }
 
 func TestAPIKey_CreateGeraPrefixoNdk(t *testing.T) {
@@ -118,6 +127,58 @@ func TestAPIKey_CreateGeraPrefixoNdk(t *testing.T) {
 	h := store.hashes[created.ID]
 	if len(h) != 64 || h == created.Key {
 		t.Errorf("hash mal-formado ou é a chave em claro: %q", h)
+	}
+	if store.keys[0].EncryptedKey == "" || store.keys[0].EncryptedKey == created.Key {
+		t.Fatal("a chave precisa ser persistida cifrada, nunca em texto puro")
+	}
+	listed, err := svc.ListKeys(context.Background())
+	if err != nil {
+		t.Fatalf("listando chaves: %v", err)
+	}
+	if len(listed) != 1 || listed[0].Key != created.Key {
+		t.Fatalf("chave cifrada não foi recuperada do histórico: %+v", listed)
+	}
+}
+
+func TestAPIKey_RotacaoRevogaAnteriorEMantemHistorico(t *testing.T) {
+	svc, store := newAPIKeySvc(0)
+	ctx := context.Background()
+	first, err := svc.CreateKey(ctx, "app-1", "portal-a", "produção", "actor")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Validate(ctx, first.Key); err != nil {
+		t.Fatalf("chave inicial deveria autenticar antes da rotação: %v", err)
+	}
+	second, err := svc.CreateKey(ctx, "app-1", "portal-a", "rotação", "actor")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(store.keys) != 2 || store.keys[0].Active || store.keys[0].RevokedAt == nil {
+		t.Fatalf("a chave anterior deveria permanecer no histórico como revogada: %+v", store.keys)
+	}
+	if !store.keys[1].Active || store.keys[1].ID != second.ID {
+		t.Fatalf("a chave nova deveria ser a única ativa: %+v", store.keys)
+	}
+	if _, err := svc.Validate(ctx, first.Key); !errors.Is(err, domain.ErrUnauthorized) {
+		t.Fatalf("chave anterior deveria ser rejeitada: %v", err)
+	}
+	if _, err := svc.Validate(ctx, second.Key); err != nil {
+		t.Fatalf("chave nova deveria ser válida: %v", err)
+	}
+}
+
+func TestAPIKey_RecuperacaoExigeMesmaChaveDeCifra(t *testing.T) {
+	store := newFakeAPIKeyStore()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	creator := NewAPIKeyService(store, 0, 0, logger, "stable-secret-1")
+	_, err := creator.CreateKey(context.Background(), "app-1", "portal-a", "", "actor")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader := NewAPIKeyService(store, 0, 0, logger, "stable-secret-2")
+	if _, err := reader.ListKeys(context.Background()); err == nil {
+		t.Fatal("a chave cifrada não deve ser revelável com outra chave de cifra")
 	}
 }
 

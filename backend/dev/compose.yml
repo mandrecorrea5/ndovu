@@ -200,6 +200,7 @@ services:
       NDOVU_PORT: 8080
       NDOVU_CORS_ORIGINS: ${NDOVU_CORS_ORIGINS:-*}
       NDOVU_AUTH_SECRET: ${NDOVU_AUTH_SECRET:-dev-secret-troque-em-producao}
+      NDOVU_API_KEY_ENC_KEY: ${NDOVU_API_KEY_ENC_KEY:-dev-api-key-encryption-key-change-me!!}
       NDOVU_ADMIN_EMAIL: ${NDOVU_ADMIN_EMAIL:-admin@ndovu.local}
       NDOVU_ADMIN_PASSWORD: ${NDOVU_ADMIN_PASSWORD:-admin12345}
       NDOVU_BOOTSTRAP_INGEST_KEY: ${NDOVU_BOOTSTRAP_INGEST_KEY:-dev-ingest-key}

@@ -80,17 +80,19 @@ type CompanyStore interface {
 	DeleteCompany(ctx context.Context, id string) error
 }
 
-// APIKey identifica um app emissor na ingestão. A chave em claro só existe
-// no momento da criação; armazenamos apenas o hash e um prefixo de exibição.
+// APIKey identifica um app emissor na ingestão. Key é preenchida apenas nas
+// respostas administrativas; EncryptedKey é persistida cifrada e nunca serializada.
 type APIKey struct {
-	ID        string     `json:"id"`
-	AppID     string     `json:"appId,omitempty"`
-	App       string     `json:"app"`
-	Label     string     `json:"label,omitempty"`
-	Prefix    string     `json:"prefix"`
-	Active    bool       `json:"active"`
-	CreatedAt time.Time  `json:"createdAt"`
-	RevokedAt *time.Time `json:"revokedAt,omitempty"`
+	ID           string     `json:"id"`
+	AppID        string     `json:"appId,omitempty"`
+	App          string     `json:"app"`
+	Label        string     `json:"label,omitempty"`
+	Prefix       string     `json:"prefix"`
+	Key          string     `json:"key,omitempty"`
+	EncryptedKey string     `json:"-"`
+	Active       bool       `json:"active"`
+	CreatedAt    time.Time  `json:"createdAt"`
+	RevokedAt    *time.Time `json:"revokedAt,omitempty"`
 }
 
 // App é um frontend emissor cadastrado no control plane. O cadastro guarda os
@@ -137,6 +139,7 @@ type UserStore interface {
 	ListUsersByCompany(ctx context.Context, companyID string) ([]User, error)
 	UpdateUser(ctx context.Context, id string, role *Role, active *bool, name *string, companyID *string) (User, error)
 	SetPassword(ctx context.Context, id string, passwordHash string) error
+	SetSuperAdmin(ctx context.Context, id string) error
 	CountActiveAdmins(ctx context.Context) (int, error)
 }
 

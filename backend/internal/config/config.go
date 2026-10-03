@@ -27,6 +27,7 @@ type Config struct {
 	AdminPassword      string
 	BootstrapIngestKey string        // chave de ingestão criada quando não existe nenhuma
 	KeyCacheTTL        time.Duration // cache de validação de X-Api-Key
+	APIKeyEncKey       string        // chave AES-GCM estável para cifrar chaves de ingestão recuperáveis
 
 	// ClickHouse (armazém analítico de traces)
 	ClickHouseAddr     string // host:porta do protocolo nativo
@@ -159,6 +160,7 @@ func LoadFor(component string) (Config, error) {
 		AdminPassword:      envStr("NDOVU_ADMIN_PASSWORD", "admin12345"),
 		BootstrapIngestKey: bootstrapIngestKey,
 		KeyCacheTTL:        time.Duration(envInt("NDOVU_KEY_CACHE_TTL_SECONDS", 30)) * time.Second,
+		APIKeyEncKey:       envStr("NDOVU_API_KEY_ENC_KEY", ""),
 
 		IngestRateRPS:   float64(envInt("NDOVU_INGEST_RATE_RPS", 50)),
 		AlertsInterval:  time.Duration(envInt("NDOVU_ALERTS_INTERVAL_SECONDS", 60)) * time.Second,
@@ -230,6 +232,8 @@ func validate(cfg Config, component string) error {
 			"NDOVU_ADMIN_EMAIL")
 		require(len(cfg.AdminPassword) >= 12 && cfg.AdminPassword != "admin12345",
 			"NDOVU_ADMIN_PASSWORD (mínimo 12 caracteres)")
+		require(len(cfg.APIKeyEncKey) >= 32,
+			"NDOVU_API_KEY_ENC_KEY (mínimo 32 caracteres — chave estável, não rotacionar)")
 
 		origins := strings.Split(cfg.CORSOrigins, ",")
 		require(strings.TrimSpace(cfg.CORSOrigins) != "" && !strings.Contains(cfg.CORSOrigins, "*"),

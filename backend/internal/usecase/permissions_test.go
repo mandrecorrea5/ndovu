@@ -78,6 +78,7 @@ func (f *fakeUserResolver) UpdateUser(context.Context, string, *domain.Role, *bo
 	return domain.User{}, nil
 }
 func (f *fakeUserResolver) SetPassword(context.Context, string, string) error { return nil }
+func (f *fakeUserResolver) SetSuperAdmin(context.Context, string) error       { return nil }
 func (f *fakeUserResolver) CountActiveAdmins(context.Context) (int, error)    { return 1, nil }
 
 // fakeAppResolver só implementa GetApp.

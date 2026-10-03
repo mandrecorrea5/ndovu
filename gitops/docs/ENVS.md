@@ -21,6 +21,7 @@ artefato com imagem por ambiente.
 | Secret | `ndovu-postgres-credentials` | ambos os namespaces | URL/usuário/senha do control plane |
 | Secret | `ndovu-clickhouse-credentials` | ambos os namespaces | Usuário/senha do ClickHouse |
 | Secret | `ndovu-auth-credentials` | `ndovu-app-<env>` | Segredo JWT e bootstrap do admin |
+| Secret | `ndovu-api-key-encryption` | `ndovu-app-<env>` | Chave estável de cifra das chaves de ingestão |
 | Secret | `ndovu-s3-credentials` | ambos os namespaces | Access/secret key do bucket |
 | Secret | `ndovu-smtp-credentials` | `ndovu-app-<env>` | SMTP ou API key do SendGrid |
 
@@ -77,6 +78,7 @@ Ordem de precedência no pod (a última vence):
 | `ndovu-auth-credentials` | `NDOVU_AUTH_SECRET` | **aleatório, ≥32 bytes, por ambiente**. Trocar invalida todas as sessões |
 | | `NDOVU_ADMIN_EMAIL`, `NDOVU_ADMIN_PASSWORD` | bootstrap do primeiro admin; senha aleatória em prd |
 | | `NDOVU_BOOTSTRAP_INGEST_KEY` | chave de ingestão inicial; em prd **gerar aleatória e revogar** pela tela de Chaves de API após criar as reais |
+| `ndovu-api-key-encryption` | `NDOVU_API_KEY_ENC_KEY` | aleatória, ≥32 caracteres; manter estável e com backup, pois cifra o histórico recuperável das chaves de ingestão |
 | `ndovu-s3-credentials` | `NDOVU_S3_ACCESS_KEY`, `NDOVU_S3_SECRET_KEY` | Secret da ObjectBucketClaim |
 | `ndovu-smtp-credentials` | `NDOVU_SMTP_*` ou `NDOVU_SENDGRID_API_KEY` | relay corporativo / SendGrid |
 

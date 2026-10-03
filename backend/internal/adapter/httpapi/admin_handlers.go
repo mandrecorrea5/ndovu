@@ -285,7 +285,7 @@ func (h *Handlers) PostAPIKeys(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	identity, _ := IdentityFrom(r.Context())
-	created, err := h.keys.CreateKey(r.Context(), "", req.App, req.Label, identity.UserID)
+	created, err := h.keys.CreateKey(r.Context(), app.ID, req.App, req.Label, identity.UserID)
 	if err != nil {
 		h.writeError(w, r, err)
 		return

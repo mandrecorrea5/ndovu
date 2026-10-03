@@ -175,6 +175,15 @@ func (f *nopUserStore) SetPassword(_ context.Context, id, hash string) error {
 	f.hashes[id] = hash
 	return nil
 }
+func (f *nopUserStore) SetSuperAdmin(_ context.Context, id string) error {
+	u, ok := f.users[id]
+	if !ok || u.Role != domain.RoleAdmin {
+		return domain.ErrNotFound
+	}
+	u.IsSuper = true
+	f.users[id] = u
+	return nil
+}
 func (f *nopUserStore) CountActiveAdmins(context.Context) (int, error) { return f.adminN, nil }
 
 type nopCompanyStore struct {
@@ -308,6 +317,14 @@ func newNopKeyStore() *nopKeyStore {
 }
 
 func (f *nopKeyStore) CreateAPIKey(_ context.Context, k domain.APIKey, hash, _ string) (domain.APIKey, error) {
+	for id, old := range f.keys {
+		if k.AppID != "" && old.AppID == k.AppID && old.Active {
+			old.Active = false
+			revokedAt := time.Now().UTC()
+			old.RevokedAt = &revokedAt
+			f.keys[id] = old
+		}
+	}
 	f.seq++
 	k.ID = "k-" + string(rune('a'+f.seq))
 	k.Active = true
@@ -388,7 +405,7 @@ func (f *nopIssueStore) ListIssueComments(_ context.Context, fp string) ([]domai
 }
 func (f *nopIssueStore) CreateIssueComment(_ context.Context, fp, authorID, body string) (domain.IssueComment, error) {
 	c := domain.IssueComment{
-		ID: "c-" + string(rune('a'+len(f.comments))),
+		ID:          "c-" + string(rune('a'+len(f.comments))),
 		Fingerprint: fp, AuthorID: authorID, Body: body, CreatedAt: time.Now().UTC(),
 	}
 	f.comments = append(f.comments, c)

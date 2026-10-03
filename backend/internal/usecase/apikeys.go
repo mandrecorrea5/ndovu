@@ -2,8 +2,11 @@ package usecase
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -29,6 +32,7 @@ type APIKeyService struct {
 	store    domain.APIKeyStore
 	logger   *slog.Logger
 	cacheTTL time.Duration
+	keyAEAD  cipher.AEAD
 
 	mu    sync.RWMutex
 	cache map[string]cachedKey // key: hash da chave
@@ -46,8 +50,8 @@ type cachedKey struct {
 }
 
 // NewAPIKeyService cria o serviço de chaves. rateRPS <= 0 desliga o rate limit.
-func NewAPIKeyService(store domain.APIKeyStore, cacheTTL time.Duration, rateRPS float64, logger *slog.Logger) *APIKeyService {
-	return &APIKeyService{
+func NewAPIKeyService(store domain.APIKeyStore, cacheTTL time.Duration, rateRPS float64, logger *slog.Logger, encryptionSecret string) *APIKeyService {
+	service := &APIKeyService{
 		store:    store,
 		logger:   logger,
 		cacheTTL: cacheTTL,
@@ -55,6 +59,17 @@ func NewAPIKeyService(store domain.APIKeyStore, cacheTTL time.Duration, rateRPS 
 		rateRPS:  rateRPS,
 		limiters: map[string]*rate.Limiter{},
 	}
+	if encryptionSecret != "" {
+		key := sha256.Sum256([]byte("ndovu/api-key-encryption/v1\x00" + encryptionSecret))
+		block, err := aes.NewCipher(key[:])
+		if err == nil {
+			service.keyAEAD, err = cipher.NewGCM(block)
+			if err != nil {
+				service.logger.Error("inicializando cifra das chaves de API", "err", err)
+			}
+		}
+	}
+	return service
 }
 
 // Allow retorna false quando a chave estourou o rate limit — a ingestão
@@ -73,10 +88,9 @@ func (s *APIKeyService) Allow(key domain.APIKey) bool {
 	return lim.Allow()
 }
 
-// CreatedKey é o retorno da criação: a única vez em que a chave aparece em claro.
+// CreatedKey retorna a chave recém-criada em claro.
 type CreatedKey struct {
 	domain.APIKey
-	Key string `json:"key"`
 }
 
 // CreateKey gera uma chave nova para um app ("ndk_" + 32 bytes hex).
@@ -89,29 +103,72 @@ func (s *APIKeyService) CreateKey(ctx context.Context, appID, app, label, create
 		return CreatedKey{}, fmt.Errorf("gerando chave: %w", err)
 	}
 	plaintext := "ndk_" + hex.EncodeToString(raw)
+	if s.keyAEAD == nil {
+		return CreatedKey{}, errors.New("cifragem de chaves de API não configurada")
+	}
+	nonce := make([]byte, s.keyAEAD.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return CreatedKey{}, fmt.Errorf("gerando nonce para chave: %w", err)
+	}
+	ciphertext := s.keyAEAD.Seal(nonce, nonce, []byte(plaintext), []byte(appID))
 
 	key, err := s.store.CreateAPIKey(ctx, domain.APIKey{
-		AppID:  appID,
-		App:    app,
-		Label:  label,
-		Prefix: plaintext[:keyPrefixLen],
+		AppID:        appID,
+		App:          app,
+		Label:        label,
+		Prefix:       plaintext[:keyPrefixLen],
+		EncryptedKey: base64.RawURLEncoding.EncodeToString(ciphertext),
 	}, hashKey(plaintext), createdBy)
 	if err != nil {
 		return CreatedKey{}, err
 	}
+	s.clearValidationCache()
 	s.logger.InfoContext(ctx, "chave de ingestão criada", "app", app, "prefix", key.Prefix)
-	return CreatedKey{APIKey: key, Key: plaintext}, nil
+	key.Key = plaintext
+	return CreatedKey{APIKey: key}, nil
 }
 
 // ListKeys lista as chaves (visão global — usar só para super-admin).
-// Nunca expõe hash nem chave em claro.
 func (s *APIKeyService) ListKeys(ctx context.Context) ([]domain.APIKey, error) {
-	return s.store.ListAPIKeys(ctx)
+	keys, err := s.store.ListAPIKeys(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return s.revealKeys(keys)
 }
 
 // ListKeysByCompany filtra por company — usar para admin não-super.
 func (s *APIKeyService) ListKeysByCompany(ctx context.Context, companyID string) ([]domain.APIKey, error) {
-	return s.store.ListAPIKeysByCompany(ctx, companyID)
+	keys, err := s.store.ListAPIKeysByCompany(ctx, companyID)
+	if err != nil {
+		return nil, err
+	}
+	return s.revealKeys(keys)
+}
+
+func (s *APIKeyService) revealKeys(keys []domain.APIKey) ([]domain.APIKey, error) {
+	for i := range keys {
+		if keys[i].EncryptedKey == "" {
+			continue
+		}
+		if s.keyAEAD == nil {
+			return nil, errors.New("cifragem de chaves de API não configurada")
+		}
+		ciphertext, err := base64.RawURLEncoding.DecodeString(keys[i].EncryptedKey)
+		if err != nil {
+			return nil, fmt.Errorf("decodificando chave %s: %w", keys[i].ID, err)
+		}
+		if len(ciphertext) < s.keyAEAD.NonceSize() {
+			return nil, fmt.Errorf("chave cifrada inválida: %s", keys[i].ID)
+		}
+		nonce, ciphertext := ciphertext[:s.keyAEAD.NonceSize()], ciphertext[s.keyAEAD.NonceSize():]
+		plaintext, err := s.keyAEAD.Open(nil, nonce, ciphertext, []byte(keys[i].AppID))
+		if err != nil {
+			return nil, fmt.Errorf("decifrando chave %s: %w", keys[i].ID, err)
+		}
+		keys[i].Key = string(plaintext)
+	}
+	return keys, nil
 }
 
 // GetKeyByID resolve uma chave pelo id — usado no ownership check antes
@@ -125,12 +182,15 @@ func (s *APIKeyService) RevokeKey(ctx context.Context, id string) error {
 	if err := s.store.RevokeAPIKey(ctx, id); err != nil {
 		return err
 	}
-	// Revogação deve valer AGORA: derruba o cache inteiro (operação rara).
+	s.clearValidationCache()
+	s.logger.InfoContext(ctx, "chave de ingestão revogada", "id", id)
+	return nil
+}
+
+func (s *APIKeyService) clearValidationCache() {
 	s.mu.Lock()
 	s.cache = map[string]cachedKey{}
 	s.mu.Unlock()
-	s.logger.InfoContext(ctx, "chave de ingestão revogada", "id", id)
-	return nil
 }
 
 // RevokeByApp revoga todas as chaves ativas de um app (usado ao excluir o app).
@@ -146,9 +206,7 @@ func (s *APIKeyService) RevokeByApp(ctx context.Context, appID string) error {
 			}
 		}
 	}
-	s.mu.Lock()
-	s.cache = map[string]cachedKey{}
-	s.mu.Unlock()
+	s.clearValidationCache()
 	return nil
 }
 

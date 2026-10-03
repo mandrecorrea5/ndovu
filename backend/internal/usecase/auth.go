@@ -238,8 +238,23 @@ func (s *AuthService) ResetPassword(ctx context.Context, id, password string) er
 
 // EnsureBootstrapAdmin cria o primeiro admin se não existir nenhum usuário —
 // sem ele a ferramenta não teria como ser gerenciada no primeiro boot.
-// Atrela o admin à empresa "Padrão" criada pela migração 000004.
+// A conta configurada em NDOVU_ADMIN_EMAIL é sempre super-admin. Isso também
+// corrige contas existentes criadas antes de a migração 000010 poder promovê-las.
 func (s *AuthService) EnsureBootstrapAdmin(ctx context.Context, email, password string) error {
+	bootstrapUser, _, err := s.users.GetUserByEmail(ctx, email)
+	if err == nil {
+		if bootstrapUser.Role == domain.RoleAdmin && !bootstrapUser.IsSuper {
+			if err := s.users.SetSuperAdmin(ctx, bootstrapUser.ID); err != nil {
+				return fmt.Errorf("promovendo admin bootstrap: %w", err)
+			}
+			s.logger.Info("admin bootstrap promovido a super-admin", "email", bootstrapUser.Email)
+		}
+		return nil
+	}
+	if !errors.Is(err, domain.ErrNotFound) {
+		return fmt.Errorf("consultando admin bootstrap: %w", err)
+	}
+
 	users, err := s.users.ListUsers(ctx)
 	if err != nil {
 		return fmt.Errorf("verificando usuários existentes: %w", err)
@@ -263,7 +278,7 @@ func (s *AuthService) EnsureBootstrapAdmin(ctx context.Context, email, password 
 	if defaultCompany == "" {
 		return fmt.Errorf("nenhuma empresa cadastrada para atrelar o admin inicial")
 	}
-	_, err = s.CreateUser(ctx, CreateUserInput{
+	created, err := s.CreateUser(ctx, CreateUserInput{
 		Email:     email,
 		Name:      "Administrador",
 		Password:  password,
@@ -272,6 +287,9 @@ func (s *AuthService) EnsureBootstrapAdmin(ctx context.Context, email, password 
 	})
 	if err != nil {
 		return fmt.Errorf("criando admin inicial: %w", err)
+	}
+	if err := s.users.SetSuperAdmin(ctx, created.ID); err != nil {
+		return fmt.Errorf("promovendo admin inicial a super-admin: %w", err)
 	}
 	s.logger.Info("admin inicial criado — troque a senha no primeiro acesso", "email", email)
 	return nil

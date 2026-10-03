@@ -3,9 +3,7 @@ import { loginAs } from '../helpers/auth';
 import { BOOTSTRAP_ADMIN } from '../helpers/api';
 import { seedApp, seedCompany } from '../helpers/seed';
 
-// Rotação zero-downtime: admin cria segunda chave, valida que ambas
-// ingerem em paralelo (janela de transição), revoga a antiga pela UI,
-// confirma que antiga passa a rejeitar mas nova continua ok.
+// Rotação: gerar nova chave revoga a antiga, preservando e exibindo o histórico.
 // RevokeKey no backend invalida o cache imediatamente — o teste não
 // depende de esperar TTL expirar.
 
@@ -52,34 +50,29 @@ test.describe('rotação de API keys — zero downtime', () => {
     await page.locator('#key-label').fill('rotation-e2e');
     await page.getByRole('button', { name: /gerar chave/i }).click();
 
-    // Banner "chave em claro" — extrai o valor do <code>. É a única chance
-    // de ler a chave (backend guarda só hash).
+    // O banner apresenta a nova chave após a geração.
     const codeEl = page.locator('code.mono', { hasText: /^ndv_|^[A-Za-z0-9_-]{16,}/ }).first();
     await expect(codeEl).toBeVisible({ timeout: 10_000 });
     const key2 = (await codeEl.textContent())?.trim() ?? '';
     expect(key2.length).toBeGreaterThan(10);
     expect(key2).not.toBe(key1);
 
-    // Ambas ativas: rotação em andamento.
-    expect(await ingest(request, app.resource.name, key1)).toBe(202);
+    // A chave anterior é revogada automaticamente na rotação.
+    expect(await ingest(request, app.resource.name, key1)).toBe(401);
     expect(await ingest(request, app.resource.name, key2)).toBe(202);
 
-    // Revoga a key1 clicando na linha correta (prefixo dela).
     // O botão "fechar" o banner libera o layout da tabela abaixo.
     await page.getByRole('button', { name: /^fechar$/i }).click();
 
-    // Cada chave tem prefix visível de 8 chars (na coluna "Prefixo"). Uso o
-    // início do plaintext pra achar a linha da key1 sem ambiguidade — o
-    // backend expõe os primeiros N chars.
+    // A chave anterior permanece no histórico e pode ser revelada novamente.
     const key1Prefix = key1.slice(0, 8);
     const row1 = page.getByRole('row').filter({ hasText: key1Prefix });
     await expect(row1).toBeVisible();
-    await row1.getByRole('button', { name: /^revogar$/i }).click();
-
-    // Aguarda a linha virar "revogada" (sem botão revogar mais).
     await expect(row1.getByText(/○ revogada/)).toBeVisible({ timeout: 10_000 });
+    await row1.getByRole('button', { name: /^ver$/i }).click();
+    await expect(row1.getByText(key1, { exact: true })).toBeVisible();
 
-    // key1 agora rejeita, key2 continua aceitando.
+    // key1 rejeita, key2 continua aceitando.
     expect(await ingest(request, app.resource.name, key1)).toBe(401);
     expect(await ingest(request, app.resource.name, key2)).toBe(202);
   });

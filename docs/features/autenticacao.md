@@ -31,7 +31,8 @@ Ingestão de eventos **não** passa por aqui — SDKs enviam com
 1. Suba o backend. No primeiro boot, se **não existe nenhum usuário**,
    o `AuthService.EnsureBootstrapAdmin` cria o admin inicial usando as
    env vars (default `admin@ndovu.local` / `admin12345`) e vincula à
-   empresa `Padrão`.
+   empresa `Padrão`. A conta correspondente a `NDOVU_ADMIN_EMAIL` recebe
+   `isSuper=true`, inclusive se já existia sem essa flag.
 2. Abra `http://localhost:13000/login`, informe as credenciais e
    entre — o dashboard chama `POST /v1/auth/login` e persiste o token
    em `localStorage` (`ndovu.token`) + o usuário (`ndovu.user`).
@@ -101,7 +102,8 @@ Roteiro de 45s:
 O endpoint devolve `role` do usuário; o dashboard usa isso pra
 esconder botões, mas quem barra de verdade é o backend:
 
-- **super-admin** (`isSuper=true`) — vê todas as companies.
+- **super-admin** (`isSuper=true`) — vê todas as companies. A conta configurada
+  por `NDOVU_ADMIN_EMAIL` é promovida automaticamente na inicialização da API.
 - **admin** — CRUD de users/apps/keys/regras da própria company.
 - **editor** — leitura + escrita colaborativa (funnels, issues).
 - **viewer** — só leitura + saved views próprias.

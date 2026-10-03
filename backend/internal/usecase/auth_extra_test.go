@@ -146,13 +146,29 @@ func TestAuth_EnsureBootstrapAdminSemUsuariosCria(t *testing.T) {
 	if len(users.users) != 1 {
 		t.Errorf("esperava 1 admin bootstrap, veio %d", len(users.users))
 	}
-	// Deve ser admin ativo super.
+	// Deve ser admin ativo e super.
 	var created domain.User
 	for _, u := range users.users {
 		created = u
 	}
-	if created.Role != domain.RoleAdmin || !created.Active {
+	if created.Role != domain.RoleAdmin || !created.Active || !created.IsSuper {
 		t.Errorf("bootstrap admin com dados errados: %+v", created)
+	}
+}
+
+func TestAuth_EnsureBootstrapAdminPromoveContaConfiguradaExistente(t *testing.T) {
+	svc, users, _ := newAuthSvcExtra()
+	bootstrap := seedUser(t, users, "boot@ndovu.local", "c1", domain.RoleAdmin, true)
+	otherAdmin := seedUser(t, users, "other@ndovu.local", "c1", domain.RoleAdmin, true)
+
+	if err := svc.EnsureBootstrapAdmin(context.Background(), "boot@ndovu.local", "senha1234"); err != nil {
+		t.Fatalf("bootstrap falhou: %v", err)
+	}
+	if !users.users[bootstrap.ID].IsSuper {
+		t.Fatal("a conta admin configurada deveria ser promovida a super-admin")
+	}
+	if users.users[otherAdmin.ID].IsSuper {
+		t.Fatal("outro admin não deveria ser promovido")
 	}
 }
 

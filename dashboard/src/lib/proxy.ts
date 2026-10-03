@@ -9,7 +9,10 @@ import { UpstreamError } from './bff';
  * decidir redirect e mensagens.
  */
 export function proxyResponse(data: unknown): NextResponse {
-  return NextResponse.json(data ?? null, { status: 200 });
+  return NextResponse.json(data ?? null, {
+    status: 200,
+    headers: { 'Cache-Control': 'no-store' },
+  });
 }
 
 /**
@@ -20,8 +23,11 @@ export function errorResponse(err: unknown): NextResponse {
   if (err instanceof UpstreamError) {
     return NextResponse.json(
       { error: err.message, ...(err.details ? { details: err.details } : {}) },
-      { status: err.status },
+      { status: err.status, headers: { 'Cache-Control': 'no-store' } },
     );
   }
-  return NextResponse.json({ error: 'Erro interno no proxy' }, { status: 500 });
+  return NextResponse.json(
+    { error: 'Erro interno no proxy' },
+    { status: 500, headers: { 'Cache-Control': 'no-store' } },
+  );
 }

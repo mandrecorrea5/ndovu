@@ -132,7 +132,7 @@ paths:
       security: [{ BearerAuth: [] }]
       responses:
         "200":
-          description: Chaves (sem o valor em claro)
+          description: Histórico de chaves do escopo do admin; valores existentes são revelados apenas a admins autenticados
           content:
             application/json:
               schema:
@@ -144,7 +144,7 @@ paths:
     post:
       tags: [auth]
       summary: Cria chave de ingestão para um app (admin)
-      description: A resposta é a única vez em que a chave aparece em claro.
+      description: Armazena a chave cifrada, revoga a chave ativa anterior do app na mesma transação e retorna o novo valor.
       security: [{ BearerAuth: [] }]
       requestBody:
         required: true
@@ -166,7 +166,7 @@ paths:
                   - $ref: "#/components/schemas/APIKey"
                   - type: object
                     properties:
-                      key: { type: string, description: valor em claro (única exibição) }
+                      key: { type: string, description: valor em claro para o admin autenticado }
   /v1/admin/api-keys/{id}:
     delete:
       tags: [auth]
@@ -196,8 +196,8 @@ paths:
                     items: { $ref: "#/components/schemas/App" }
     post:
       tags: [auth]
-      summary: Cadastra um app e gera a chave de API (única exibição)
-      description: A resposta é a única vez em que a chave aparece em claro — copie e envie ao responsável da integração.
+      summary: Cadastra um app e gera a chave inicial de API
+      description: A chave é armazenada cifrada e pode ser consultada na administração de chaves.
       security: [{ BearerAuth: [] }]
       requestBody:
         required: true
@@ -221,7 +221,7 @@ paths:
                   - $ref: "#/components/schemas/App"
                   - type: object
                     properties:
-                      key: { type: string, description: valor em claro (única exibição) }
+                      key: { type: string, description: valor em claro para o admin autenticado }
         "409": { $ref: "#/components/responses/Conflict" }
   /v1/admin/apps/{id}:
     get:
@@ -476,6 +476,7 @@ components:
         app: { type: string }
         label: { type: string }
         prefix: { type: string, description: primeiros caracteres, para identificação }
+        key: { type: string, description: valor em claro retornado apenas nas rotas administrativas autenticadas }
         active: { type: boolean }
         createdAt: { type: string, format: date-time }
         revokedAt: { type: string, format: date-time }

@@ -290,6 +290,19 @@ func (r *Repository) SetPassword(ctx context.Context, id string, passwordHash st
 	return nil
 }
 
+// SetSuperAdmin grants super-admin to the configured bootstrap account.
+func (r *Repository) SetSuperAdmin(ctx context.Context, id string) error {
+	ct, err := r.pool.Exec(ctx,
+		`UPDATE users SET is_super = true, updated_at = now() WHERE id = $1 AND role = 'admin'`, id)
+	if err != nil {
+		return fmt.Errorf("promovendo usuário a super-admin: %w", err)
+	}
+	if ct.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
 // CountActiveAdmins conta admins ativos (protege contra remover o último).
 func (r *Repository) CountActiveAdmins(ctx context.Context) (int, error) {
 	var n int
@@ -304,19 +317,43 @@ func (r *Repository) CountActiveAdmins(ctx context.Context) (int, error) {
 
 const keyColumns = `id, COALESCE(app_id::text, '') AS app_id, app, label, key_prefix, active, created_at, revoked_at`
 
-// CreateAPIKey insere uma chave (somente hash + prefixo).
+// CreateAPIKey revoga a chave ativa anterior do app e registra a nova na mesma
+// transação, preservando o histórico e evitando duas chaves ativas concorrentes.
 func (r *Repository) CreateAPIKey(ctx context.Context, k domain.APIKey, keyHash string, createdBy string) (domain.APIKey, error) {
-	err := r.pool.QueryRow(ctx, `
-		INSERT INTO api_keys (app_id, app, label, key_hash, key_prefix, created_by)
-		VALUES (NULLIF($1, '')::uuid, $2, $3, $4, $5, NULLIF($6, '')::uuid)
-		RETURNING `+keyColumns,
-		k.AppID, k.App, k.Label, keyHash, k.Prefix, createdBy).
-		Scan(&k.ID, &k.AppID, &k.App, &k.Label, &k.Prefix, &k.Active, &k.CreatedAt, &k.RevokedAt)
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return domain.APIKey{}, fmt.Errorf("iniciando transação de criação de chave: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if k.AppID != "" {
+		var lockedAppID string
+		if err := tx.QueryRow(ctx, `SELECT id FROM apps WHERE id = $1 FOR UPDATE`, k.AppID).Scan(&lockedAppID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.APIKey{}, domain.ErrNotFound
+			}
+			return domain.APIKey{}, fmt.Errorf("bloqueando app para rotação de chave: %w", err)
+		}
+		if _, err := tx.Exec(ctx,
+			`UPDATE api_keys SET active = false, revoked_at = now() WHERE app_id = $1 AND active`,
+			k.AppID); err != nil {
+			return domain.APIKey{}, fmt.Errorf("revogando chave anterior do app: %w", err)
+		}
+	}
+	err = tx.QueryRow(ctx, `
+		INSERT INTO api_keys (app_id, app, label, key_hash, key_prefix, key_ciphertext, created_by)
+		VALUES (NULLIF($1, '')::uuid, $2, $3, $4, $5, $6, NULLIF($7, '')::uuid)
+		RETURNING `+keyColumns+`, key_ciphertext`,
+		k.AppID, k.App, k.Label, keyHash, k.Prefix, k.EncryptedKey, createdBy).
+		Scan(&k.ID, &k.AppID, &k.App, &k.Label, &k.Prefix, &k.Active, &k.CreatedAt, &k.RevokedAt, &k.EncryptedKey)
 	if isUniqueViolation(err) {
 		return domain.APIKey{}, domain.ErrConflict
 	}
 	if err != nil {
 		return domain.APIKey{}, fmt.Errorf("criando chave: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return domain.APIKey{}, fmt.Errorf("confirmando criação de chave: %w", err)
 	}
 	return k, nil
 }
@@ -324,7 +361,7 @@ func (r *Repository) CreateAPIKey(ctx context.Context, k domain.APIKey, keyHash 
 // ListAPIKeys lista todas as chaves (sem hash). Cross-company: use só para
 // super-admin. Admin normal deve chamar ListAPIKeysByCompany.
 func (r *Repository) ListAPIKeys(ctx context.Context) ([]domain.APIKey, error) {
-	rows, err := r.pool.Query(ctx, `SELECT `+keyColumns+` FROM api_keys ORDER BY created_at DESC`)
+	rows, err := r.pool.Query(ctx, `SELECT `+keyColumns+`, key_ciphertext FROM api_keys ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("listando chaves: %w", err)
 	}
@@ -332,7 +369,7 @@ func (r *Repository) ListAPIKeys(ctx context.Context) ([]domain.APIKey, error) {
 	keys := []domain.APIKey{}
 	for rows.Next() {
 		var k domain.APIKey
-		if err := rows.Scan(&k.ID, &k.AppID, &k.App, &k.Label, &k.Prefix, &k.Active, &k.CreatedAt, &k.RevokedAt); err != nil {
+		if err := rows.Scan(&k.ID, &k.AppID, &k.App, &k.Label, &k.Prefix, &k.Active, &k.CreatedAt, &k.RevokedAt, &k.EncryptedKey); err != nil {
 			return nil, err
 		}
 		keys = append(keys, k)
@@ -349,7 +386,7 @@ func (r *Repository) ListAPIKeysByCompany(ctx context.Context, companyID string)
 	}
 	rows, err := r.pool.Query(ctx, `
 		SELECT k.id, COALESCE(k.app_id::text, '') AS app_id, k.app, k.label, k.key_prefix,
-		       k.active, k.created_at, k.revoked_at
+		       k.active, k.created_at, k.revoked_at, k.key_ciphertext
 		FROM api_keys k
 		JOIN apps a ON a.id = k.app_id
 		WHERE a.company_id = $1::uuid
@@ -361,7 +398,7 @@ func (r *Repository) ListAPIKeysByCompany(ctx context.Context, companyID string)
 	keys := []domain.APIKey{}
 	for rows.Next() {
 		var k domain.APIKey
-		if err := rows.Scan(&k.ID, &k.AppID, &k.App, &k.Label, &k.Prefix, &k.Active, &k.CreatedAt, &k.RevokedAt); err != nil {
+		if err := rows.Scan(&k.ID, &k.AppID, &k.App, &k.Label, &k.Prefix, &k.Active, &k.CreatedAt, &k.RevokedAt, &k.EncryptedKey); err != nil {
 			return nil, err
 		}
 		keys = append(keys, k)

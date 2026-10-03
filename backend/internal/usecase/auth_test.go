@@ -102,6 +102,16 @@ func (f *fakeUserStore) SetPassword(_ context.Context, id string, hash string) e
 	return nil
 }
 
+func (f *fakeUserStore) SetSuperAdmin(_ context.Context, id string) error {
+	u, ok := f.users[id]
+	if !ok || u.Role != domain.RoleAdmin {
+		return domain.ErrNotFound
+	}
+	u.IsSuper = true
+	f.users[id] = u
+	return nil
+}
+
 func (f *fakeUserStore) CountActiveAdmins(_ context.Context) (int, error) {
 	n := 0
 	for _, u := range f.users {
@@ -327,7 +337,7 @@ func (f *fakeKeyStore) FindActiveKeyByHash(_ context.Context, hash string) (doma
 
 func TestAPIKeyCicloDeVida(t *testing.T) {
 	store := newFakeKeyStore()
-	svc := NewAPIKeyService(store, time.Minute, 0, slog.Default())
+	svc := NewAPIKeyService(store, time.Minute, 0, slog.Default(), "test-secret")
 	ctx := context.Background()
 
 	created, err := svc.CreateKey(ctx, "", "portal-cliente", "chave web", "u1")

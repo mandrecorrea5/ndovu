@@ -230,6 +230,45 @@ func TestAPIKeys_RevokeInvalidaLookup(t *testing.T) {
 	}
 }
 
+func TestAPIKeys_RotationRevogaAnteriorEMantemHistorico(t *testing.T) {
+	repo := testenv.StartPostgres(t)
+	ctx := context.Background()
+	cID := firstCompanyID(t, repo)
+	app, err := repo.CreateApp(ctx, domain.App{Name: "portal-rotation", CompanyID: cID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := repo.CreateAPIKey(ctx, domain.APIKey{
+		App: app.Name, AppID: app.ID, Prefix: "ndk_first", EncryptedKey: "ciphertext-1",
+	}, "hash-1", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := repo.CreateAPIKey(ctx, domain.APIKey{
+		App: app.Name, AppID: app.ID, Prefix: "ndk_second", EncryptedKey: "ciphertext-2",
+	}, "hash-2", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	history, err := repo.ListAPIKeysByCompany(ctx, cID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 2 {
+		t.Fatalf("esperava 2 entradas de histórico, veio %d", len(history))
+	}
+	if !history[0].Active || history[0].ID != second.ID || history[0].EncryptedKey != "ciphertext-2" {
+		t.Errorf("chave atual incorreta: %+v", history[0])
+	}
+	if history[1].Active || history[1].ID != first.ID || history[1].RevokedAt == nil || history[1].EncryptedKey != "ciphertext-1" {
+		t.Errorf("chave anterior não foi revogada e preservada: %+v", history[1])
+	}
+	if _, err := repo.FindActiveKeyByHash(ctx, "hash-1"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("hash antigo não deveria autenticar: %v", err)
+	}
+}
+
 func TestAPIKeys_ListAPIKeysByCompany_JoinPorApp(t *testing.T) {
 	repo := testenv.StartPostgres(t)
 	ctx := context.Background()

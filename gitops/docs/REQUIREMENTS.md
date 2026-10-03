@@ -68,12 +68,15 @@ ESO/Sealed Secrets.
 | `ndovu-postgres-credentials` | Postgres | `NDOVU_POSTGRES_URL` (+ `sslmode=require` em prd) |
 | `ndovu-clickhouse-credentials` | ClickHouse | `NDOVU_CLICKHOUSE_USER`, `NDOVU_CLICKHOUSE_PASSWORD` |
 | `ndovu-auth-credentials` | Auth | `NDOVU_AUTH_SECRET`, `NDOVU_ADMIN_EMAIL`, `NDOVU_ADMIN_PASSWORD`, `NDOVU_BOOTSTRAP_INGEST_KEY` |
+| `ndovu-api-key-encryption` | API key encryption | `NDOVU_API_KEY_ENC_KEY` |
 | `ndovu-s3-credentials` | Buckets | `NDOVU_S3_ACCESS_KEY`, `NDOVU_S3_SECRET_KEY` |
 | `ndovu-smtp-credentials` | Mailer | `NDOVU_SMTP_*` ou `NDOVU_SENDGRID_API_KEY` |
 
 > **Obrigatório**: `NDOVU_AUTH_SECRET` aleatório (≥32 bytes), por ambiente.
 > A API sobe com default inseguro se o Secret não for montado — a pipeline
 > deve **bloquear** o deploy quando ausente (ver `ENVS.md` §2.3).
+> `NDOVU_API_KEY_ENC_KEY` também é obrigatório para a API: use um valor
+> aleatório de pelo menos 32 caracteres e mantenha-o estável com backup seguro.
 
 ## 6. SCC e segurança
 

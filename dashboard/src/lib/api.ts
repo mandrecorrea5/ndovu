@@ -156,13 +156,14 @@ export interface ApiKeyInfo {
   app: string;
   label?: string;
   prefix: string;
+  key?: string;
   active: boolean;
   createdAt: string;
   revokedAt?: string;
 }
 
 export interface CreatedApiKey extends ApiKeyInfo {
-  key: string; // única vez em claro
+  key: string;
 }
 
 // ---------------------------------------------------------------------------

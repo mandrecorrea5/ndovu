@@ -1,6 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import Link from 'next/link';
 import { useState } from 'react';
 import { Button, Field, Input, Select } from '@/components/form';
 import { Modal, ModalActions } from '@/components/Modal';
@@ -93,9 +94,12 @@ export default function AdminAppsPage() {
         <div>
           <h1 className="text-xl font-semibold">Apps</h1>
           <p className="text-sm text-ink-2">
-            Cada frontend emissor. Ao criar, o Ndovu gera uma chave de API — copie e envie ao
-            responsável da integração.
+            Cada frontend emissor. As chaves ficam disponíveis com histórico na administração de
+            chaves de API.
           </p>
+          <Link href="/admin/keys" className="text-sm text-accent hover:underline">
+            Gerenciar chaves de API
+          </Link>
         </div>
         <Button variant="primary" onClick={openNew} icon="+">
           Novo app
@@ -105,8 +109,8 @@ export default function AdminAppsPage() {
       {created ? (
         <div className="card border-good/40 px-4 py-3">
           <p className="text-sm font-medium">
-            App <span className="mono">{created.name}</span> cadastrado. Copie a chave agora e envie
-            ao responsável — ela <strong>não</strong> será exibida de novo:
+            App <span className="mono">{created.name}</span> cadastrado. A chave está cifrada no
+            histórico e pode ser consultada em Chaves de API:
           </p>
           <div className="mt-2 flex items-center gap-2">
             <code className="mono flex-1 overflow-x-auto rounded-md bg-plane px-3 py-2 text-xs">
@@ -119,6 +123,9 @@ export default function AdminAppsPage() {
               fechar
             </Button>
           </div>
+          <Link href="/admin/keys" className="mt-2 inline-block text-sm text-accent hover:underline">
+            Abrir histórico de chaves
+          </Link>
         </div>
       ) : null}
 

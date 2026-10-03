@@ -315,7 +315,7 @@ export interface App {
   updatedAt: string;
 }
 
-/** Resultado do cadastro de um app: o app + a chave gerada (única exibição). */
+/** Resultado do cadastro de um app: o app + a chave gerada. */
 export interface CreatedApp extends App {
   key: string;
 }

@@ -88,7 +88,7 @@ func newFixture(t *testing.T) *testFixture {
 	}
 
 	authSvc := usecase.NewAuthService(f.users, f.companies, f.authSecret, time.Hour, logger)
-	keySvc := usecase.NewAPIKeyService(f.keys, 30*time.Second, 0, logger) // rateRPS=0 = desligado
+	keySvc := usecase.NewAPIKeyService(f.keys, 30*time.Second, 0, logger, "test-secret") // rateRPS=0 = desligado
 	appSvc := usecase.NewAppService(f.apps, keySvc, logger)
 	companySvc := usecase.NewCompanyService(f.companies, logger)
 	issueSvc := usecase.NewIssueService(f.reader, f.issues)
@@ -238,7 +238,7 @@ func (f *testFixture) seedKey(appName string) string {
 	f.t.Helper()
 	// Usa logger silencioso pra não poluir o output dos testes.
 	silent := slog.New(slog.NewTextHandler(io.Discard, nil))
-	keySvc := usecase.NewAPIKeyService(f.keys, 30*time.Second, 0, silent)
+	keySvc := usecase.NewAPIKeyService(f.keys, 30*time.Second, 0, silent, "test-secret")
 	created, err := keySvc.CreateKey(context.Background(), "", appName, "test-key", "")
 	if err != nil {
 		f.t.Fatalf("seed key: %v", err)
