@@ -13,7 +13,6 @@ import (
 	"github.com/marcoscorrea/ndovu/backend/internal/usecase"
 )
 
-
 // NewRouter monta todas as rotas da API.
 //
 // Ingestão: POST /v1/events (X-Api-Key gerida no control plane) — única escrita de traces.
@@ -60,7 +59,7 @@ func NewRouter(h *Handlers, cfg config.Config, verifier domain.TokenVerifier, ke
 
 		// Ingestão (única escrita de traces) — chave validada no control plane
 		r.Group(func(r chi.Router) {
-			r.Use(apiKeyAuth(keys, metrics))
+			r.Use(apiKeyAuth(keys, metrics, cfg.CORSOrigins))
 			r.Post("/events", h.PostEvents)
 			// Snapshots do SDK (session replay MVP) usam a mesma X-Api-Key.
 			r.Post("/snapshots", h.PostSnapshot)

@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/url"
 	"strings"
 
 	"github.com/marcoscorrea/ndovu/backend/internal/domain"
@@ -26,11 +28,12 @@ func NewAppService(apps domain.AppStore, keys *APIKeyService, logger *slog.Logge
 
 // CreateAppInput são os dados de cadastro de um app.
 type CreateAppInput struct {
-	Name        string
-	Technology  string
-	Company     string // rótulo textual (usado quando não há CompanyID)
-	CompanyID   string
-	Responsible string
+	Name           string
+	Technology     string
+	AllowedOrigins []string
+	Company        string // rótulo textual (usado quando não há CompanyID)
+	CompanyID      string
+	Responsible    string
 }
 
 // CreatedApp é o resultado do cadastro: o app + a chave gerada (única exibição).
@@ -47,13 +50,18 @@ func (s *AppService) Create(ctx context.Context, in CreateAppInput, createdBy st
 	if name == "" {
 		return CreatedApp{}, domain.NewValidationError("name é obrigatório")
 	}
+	origins, err := normalizeAllowedOrigins(in.AllowedOrigins)
+	if err != nil {
+		return CreatedApp{}, err
+	}
 
 	app, err := s.apps.CreateApp(ctx, domain.App{
-		Name:        name,
-		Technology:  strings.TrimSpace(in.Technology),
-		Company:     strings.TrimSpace(in.Company),
-		CompanyID:   strings.TrimSpace(in.CompanyID),
-		Responsible: strings.TrimSpace(in.Responsible),
+		Name:           name,
+		Technology:     strings.TrimSpace(in.Technology),
+		AllowedOrigins: origins,
+		Company:        strings.TrimSpace(in.Company),
+		CompanyID:      strings.TrimSpace(in.CompanyID),
+		Responsible:    strings.TrimSpace(in.Responsible),
 	})
 	if err != nil {
 		return CreatedApp{}, err
@@ -91,11 +99,12 @@ func (s *AppService) GetByName(ctx context.Context, name string) (domain.App, er
 
 // UpdateAppInput são os campos editáveis de um app.
 type UpdateAppInput struct {
-	Name        *string
-	Technology  *string
-	Company     *string
-	CompanyID   *string
-	Responsible *string
+	Name           *string
+	Technology     *string
+	AllowedOrigins *[]string
+	Company        *string
+	CompanyID      *string
+	Responsible    *string
 }
 
 // Update altera os metadados de um app.
@@ -119,10 +128,72 @@ func (s *AppService) Update(ctx context.Context, id string, in UpdateAppInput) (
 	if in.Responsible != nil {
 		cur.Responsible = strings.TrimSpace(*in.Responsible)
 	}
+	if in.AllowedOrigins != nil {
+		origins, err := normalizeAllowedOrigins(*in.AllowedOrigins)
+		if err != nil {
+			return domain.App{}, err
+		}
+		cur.AllowedOrigins = origins
+	}
 	if cur.Name == "" {
 		return domain.App{}, domain.NewValidationError("name não pode ser vazio")
 	}
-	return s.apps.UpdateApp(ctx, id, cur)
+	updated, err := s.apps.UpdateApp(ctx, id, cur)
+	if err != nil {
+		return domain.App{}, err
+	}
+	s.keys.clearValidationCache()
+	return updated, nil
+}
+
+func normalizeAllowedOrigins(origins []string) ([]string, error) {
+	if len(origins) > 20 {
+		return nil, domain.NewValidationError("máximo de 20 origens permitidas por app")
+	}
+	out := make([]string, 0, len(origins))
+	seen := make(map[string]struct{}, len(origins))
+	for _, origin := range origins {
+		origin = strings.TrimSpace(origin)
+		if origin == "" {
+			continue
+		}
+		u, err := url.Parse(origin)
+		if err != nil || u.Opaque != "" || u.User != nil || u.Hostname() == "" ||
+			u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.RawFragment != "" ||
+			(u.Path != "" && u.Path != "/") {
+			return nil, domain.NewValidationError("cada origem deve conter apenas protocolo e domínio, sem caminho")
+		}
+		u.Scheme = strings.ToLower(u.Scheme)
+		hostname := strings.ToLower(u.Hostname())
+		if strings.Contains(hostname, "*") {
+			return nil, domain.NewValidationError("wildcard não é permitido nas origens; informe cada domínio exato")
+		}
+		port := u.Port()
+		if u.Scheme != "https" &&
+			!(u.Scheme == "http" && (hostname == "localhost" || net.ParseIP(hostname) != nil && net.ParseIP(hostname).IsLoopback())) {
+			return nil, domain.NewValidationError("origens devem usar HTTPS (HTTP é permitido apenas para localhost)")
+		}
+		if (u.Scheme == "https" && port == "443") || (u.Scheme == "http" && port == "80") {
+			port = ""
+		}
+		u.Host = hostname
+		if port != "" {
+			u.Host = net.JoinHostPort(hostname, port)
+			if strings.Contains(hostname, ":") {
+				u.Host = "[" + hostname + "]:" + port
+			}
+		} else if strings.Contains(hostname, ":") {
+			u.Host = "[" + hostname + "]"
+		}
+		u.Path = ""
+		normalized := u.String()
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		out = append(out, normalized)
+	}
+	return out, nil
 }
 
 // Delete remove um app e revoga todas as suas chaves (efeito imediato na

@@ -50,11 +50,41 @@ func TestAdminApps_PostForceCompanyDoActor(t *testing.T) {
 	}, adminA))
 	requireStatus(t, rr, http.StatusCreated)
 
-	var body struct{ CompanyID string `json:"companyId"` }
+	var body struct {
+		CompanyID string `json:"companyId"`
+	}
 	decodeJSON(t, rr, &body)
 	if body.CompanyID != "c-default" {
 		t.Errorf("app deveria ter sido criado em c-default, veio %q", body.CompanyID)
 	}
+}
+
+func TestAdminApps_PostSalvaOrigensPermitidas(t *testing.T) {
+	f := newFixture(t)
+	admin := f.seedUser("admin@x", domain.RoleAdmin, "c-default", false)
+
+	rr := f.do(f.authRequest(http.MethodPost, "/v1/admin/apps", map[string]any{
+		"name":           "site-prd",
+		"allowedOrigins": []string{"https://www.example.com"},
+	}, admin))
+	requireStatus(t, rr, http.StatusCreated)
+
+	var body domain.App
+	decodeJSON(t, rr, &body)
+	if len(body.AllowedOrigins) != 1 || body.AllowedOrigins[0] != "https://www.example.com" {
+		t.Fatalf("origens não vieram na resposta: %+v", body.AllowedOrigins)
+	}
+}
+
+func TestAdminApps_PostRejeitaOrigemInsegura(t *testing.T) {
+	f := newFixture(t)
+	admin := f.seedUser("admin@x", domain.RoleAdmin, "c-default", false)
+
+	rr := f.do(f.authRequest(http.MethodPost, "/v1/admin/apps", map[string]any{
+		"name":           "site-prd",
+		"allowedOrigins": []string{"http://example.com"},
+	}, admin))
+	requireStatus(t, rr, http.StatusBadRequest)
 }
 
 func TestAdminApps_PatchBloqueiaCrossTenant(t *testing.T) {

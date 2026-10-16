@@ -326,19 +326,21 @@ func (h *Handlers) DeleteAPIKey(w http.ResponseWriter, r *http.Request) {
 // ---------------------------------------------------------------------------
 
 type createAppRequest struct {
-	Name        string `json:"name"`
-	Technology  string `json:"technology"`
-	Company     string `json:"company"`
-	CompanyID   string `json:"companyId"`
-	Responsible string `json:"responsible"`
+	Name           string   `json:"name"`
+	Technology     string   `json:"technology"`
+	AllowedOrigins []string `json:"allowedOrigins"`
+	Company        string   `json:"company"`
+	CompanyID      string   `json:"companyId"`
+	Responsible    string   `json:"responsible"`
 }
 
 type updateAppRequest struct {
-	Name        *string `json:"name"`
-	Technology  *string `json:"technology"`
-	Company     *string `json:"company"`
-	CompanyID   *string `json:"companyId"`
-	Responsible *string `json:"responsible"`
+	Name           *string   `json:"name"`
+	Technology     *string   `json:"technology"`
+	AllowedOrigins *[]string `json:"allowedOrigins"`
+	Company        *string   `json:"company"`
+	CompanyID      *string   `json:"companyId"`
+	Responsible    *string   `json:"responsible"`
 }
 
 // GetApps lista os apps — filtrado por company do actor.
@@ -386,11 +388,12 @@ func (h *Handlers) PostApps(w http.ResponseWriter, r *http.Request) {
 		req.CompanyID = identity.CompanyID
 	}
 	created, err := h.apps.Create(r.Context(), usecase.CreateAppInput{
-		Name:        req.Name,
-		Technology:  req.Technology,
-		Company:     req.Company,
-		CompanyID:   req.CompanyID,
-		Responsible: req.Responsible,
+		Name:           req.Name,
+		Technology:     req.Technology,
+		AllowedOrigins: req.AllowedOrigins,
+		Company:        req.Company,
+		CompanyID:      req.CompanyID,
+		Responsible:    req.Responsible,
 	}, identity.UserID)
 	if err != nil {
 		h.writeError(w, r, err)
@@ -426,11 +429,12 @@ func (h *Handlers) PatchApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	app, err := h.apps.Update(r.Context(), id, usecase.UpdateAppInput{
-		Name:        req.Name,
-		Technology:  req.Technology,
-		Company:     req.Company,
-		CompanyID:   req.CompanyID,
-		Responsible: req.Responsible,
+		Name:           req.Name,
+		Technology:     req.Technology,
+		AllowedOrigins: req.AllowedOrigins,
+		Company:        req.Company,
+		CompanyID:      req.CompanyID,
+		Responsible:    req.Responsible,
 	})
 	if err != nil {
 		h.writeError(w, r, err)

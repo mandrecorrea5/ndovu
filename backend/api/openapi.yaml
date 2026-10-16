@@ -209,6 +209,14 @@ paths:
               properties:
                 name: { type: string, example: portal-cliente }
                 technology: { type: string, example: React }
+                allowedOrigins:
+                  type: array
+                  maxItems: 20
+                  items:
+                    type: string
+                    format: uri
+                    example: https://www.example.com
+                  description: Origens HTTPS do site autorizadas para a chave gerada; uma origem por domínio, sem caminho.
                 company: { type: string, example: ACME Ltda }
                 responsible: { type: string, example: ana@acme.com }
       responses:
@@ -223,6 +231,7 @@ paths:
                     properties:
                       key: { type: string, description: valor em claro para o admin autenticado }
         "409": { $ref: "#/components/responses/Conflict" }
+        "400": { $ref: "#/components/responses/BadRequest" }
   /v1/admin/apps/{id}:
     get:
       tags: [auth]
@@ -252,6 +261,10 @@ paths:
               properties:
                 name: { type: string }
                 technology: { type: string }
+                allowedOrigins:
+                  type: array
+                  maxItems: 20
+                  items: { type: string, format: uri }
                 company: { type: string }
                 responsible: { type: string }
       responses:
@@ -261,6 +274,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/App" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "400": { $ref: "#/components/responses/BadRequest" }
     delete:
       tags: [auth]
       summary: Exclui um app e revoga todas as suas chaves
@@ -486,6 +500,9 @@ components:
         id: { type: string, format: uuid }
         name: { type: string }
         technology: { type: string }
+        allowedOrigins:
+          type: array
+          items: { type: string, format: uri }
         company: { type: string }
         responsible: { type: string }
         createdAt: { type: string, format: date-time }

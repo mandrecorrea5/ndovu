@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useState } from 'react';
-import { Button, Field, Input, Select } from '@/components/form';
+import { Button, Field, Input, Select, Textarea } from '@/components/form';
 import { Modal, ModalActions } from '@/components/Modal';
 import { ErrorState, LoadingState } from '@/components/ui';
 import { api, ApiError, type App, type CreatedApp } from '@/lib/api';
@@ -13,11 +13,19 @@ import { fmtDateTime } from '@/lib/time';
 type FormState = {
   name: string;
   technology: string;
+  allowedOrigins: string;
   companyId: string;
   company: string;
   responsible: string;
 };
-const EMPTY: FormState = { name: '', technology: '', companyId: '', company: '', responsible: '' };
+const EMPTY: FormState = {
+  name: '',
+  technology: '',
+  allowedOrigins: '',
+  companyId: '',
+  company: '',
+  responsible: '',
+};
 
 export default function AdminAppsPage() {
   const qc = useQueryClient();
@@ -46,6 +54,7 @@ export default function AdminAppsPage() {
     setForm({
       name: a.name,
       technology: a.technology ?? '',
+      allowedOrigins: (a.allowedOrigins ?? []).join('\n'),
       companyId: a.companyId ?? '',
       company: a.company ?? '',
       responsible: a.responsible ?? '',
@@ -59,6 +68,10 @@ export default function AdminAppsPage() {
       const payload = {
         name: form.name,
         technology: form.technology,
+        allowedOrigins: form.allowedOrigins
+          .split('\n')
+          .map((origin) => origin.trim())
+          .filter(Boolean),
         companyId: form.companyId || undefined,
         company: form.companyId ? undefined : form.company,
         responsible: form.responsible,
@@ -135,11 +148,12 @@ export default function AdminAppsPage() {
 
       {data ? (
         <div className="card overflow-x-auto">
-          <table className="w-full min-w-[760px] text-sm">
+          <table className="w-full min-w-[900px] text-sm">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-muted">
                 <th className="px-3 py-2 font-medium">Nome</th>
                 <th className="px-3 py-2 font-medium">Tecnologia</th>
+                <th className="px-3 py-2 font-medium">Origens</th>
                 <th className="px-3 py-2 font-medium">Empresa</th>
                 <th className="px-3 py-2 font-medium">Responsável</th>
                 <th className="px-3 py-2 font-medium">Criado em</th>
@@ -151,6 +165,9 @@ export default function AdminAppsPage() {
                 <tr key={a.id} className="border-t border-hairline">
                   <td className="px-3 py-2 font-medium">{a.name}</td>
                   <td className="px-3 py-2 text-xs text-ink-2">{a.technology || '—'}</td>
+                  <td className="max-w-56 px-3 py-2 text-xs text-ink-2">
+                    {a.allowedOrigins?.length ? a.allowedOrigins.join(', ') : '—'}
+                  </td>
                   <td className="px-3 py-2 text-xs text-ink-2">{a.company || '—'}</td>
                   <td className="px-3 py-2 text-xs text-ink-2">{a.responsible || '—'}</td>
                   <td className="tabular whitespace-nowrap px-3 py-2 text-xs text-ink-2">
@@ -175,7 +192,7 @@ export default function AdminAppsPage() {
               ))}
               {data.apps.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-3 py-8 text-center text-muted">
+                  <td colSpan={7} className="px-3 py-8 text-center text-muted">
                     Nenhum app cadastrado — comece pelo botão “Novo app”.
                   </td>
                 </tr>
@@ -189,7 +206,7 @@ export default function AdminAppsPage() {
         open={open}
         onClose={() => setOpen(false)}
         title={editing ? `Editar app: ${editing.name}` : 'Novo app'}
-        description="Cada app emissor tem um nome único, tecnologia e (opcional) empresa dona."
+        description="Cada app tem um nome único, tecnologia, empresa e as origens web autorizadas a enviar dados."
       >
         <form
           className="space-y-3"
@@ -220,6 +237,19 @@ export default function AdminAppsPage() {
                 </option>
               ))}
             </Select>
+          </Field>
+          <Field label="Origens permitidas do site" htmlFor="app-origins">
+            <Textarea
+              id="app-origins"
+              placeholder={'https://www.exemplo.com\nhttps://exemplo.com'}
+              value={form.allowedOrigins}
+              onChange={(e) => setForm({ ...form, allowedOrigins: e.target.value })}
+              rows={3}
+            />
+            <p className="mt-1 text-xs text-ink-2">
+              Uma origem por linha, incluindo https:// e sem caminho. Ex.: https://www.exemplo.com.
+              Deixe vazio para usar a lista global antiga do CORS.
+            </p>
           </Field>
           <Field label="Empresa" htmlFor="app-company">
             <Select

@@ -120,6 +120,67 @@ func TestAppCreateGeraChave(t *testing.T) {
 	}
 }
 
+func TestAppCreateNormalizaOrigens(t *testing.T) {
+	apps := &fakeAppStore{}
+	svc := newTestAppService(apps, &fakeAppKeyStore{})
+	created, err := svc.Create(context.Background(), CreateAppInput{
+		Name: "site",
+		AllowedOrigins: []string{
+			" https://WWW.Example.com/ ",
+			"https://www.example.com",
+		},
+	}, "user-1")
+	if err != nil {
+		t.Fatalf("erro inesperado: %v", err)
+	}
+	if len(created.AllowedOrigins) != 1 || created.AllowedOrigins[0] != "https://www.example.com" {
+		t.Fatalf("origens não foram normalizadas/deduplicadas: %+v", created.AllowedOrigins)
+	}
+}
+
+func TestAppCreateRejeitaOrigemComCaminho(t *testing.T) {
+	svc := newTestAppService(&fakeAppStore{}, &fakeAppKeyStore{})
+	_, err := svc.Create(context.Background(), CreateAppInput{
+		Name:           "site",
+		AllowedOrigins: []string{"https://example.com/login"},
+	}, "user-1")
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("esperado ErrValidation, veio: %v", err)
+	}
+}
+
+func TestAppCreateRejeitaWildcardNaOrigem(t *testing.T) {
+	svc := newTestAppService(&fakeAppStore{}, &fakeAppKeyStore{})
+	_, err := svc.Create(context.Background(), CreateAppInput{
+		Name:           "site",
+		AllowedOrigins: []string{"https://*.example.com"},
+	}, "user-1")
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("wildcard deveria ser rejeitado, veio: %v", err)
+	}
+}
+
+func TestAppCreatePermiteHTTPSoParaLocalhost(t *testing.T) {
+	svc := newTestAppService(&fakeAppStore{}, &fakeAppKeyStore{})
+	created, err := svc.Create(context.Background(), CreateAppInput{
+		Name:           "site",
+		AllowedOrigins: []string{"http://localhost:3000"},
+	}, "user-1")
+	if err != nil {
+		t.Fatalf("HTTP localhost deveria ser aceito: %v", err)
+	}
+	if created.AllowedOrigins[0] != "http://localhost:3000" {
+		t.Fatalf("origem local inesperada: %+v", created.AllowedOrigins)
+	}
+	_, err = svc.Create(context.Background(), CreateAppInput{
+		Name:           "outro-site",
+		AllowedOrigins: []string{"http://example.com"},
+	}, "user-1")
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("HTTP público deveria ser rejeitado, veio: %v", err)
+	}
+}
+
 func TestAppCreateSemNome(t *testing.T) {
 	svc := newTestAppService(&fakeAppStore{}, &fakeAppKeyStore{})
 	_, err := svc.Create(context.Background(), CreateAppInput{Name: "  "}, "u")

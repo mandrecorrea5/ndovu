@@ -22,8 +22,8 @@ JSON e você está integrado.
     `maxBatch`.
   - `NDOVU_INGEST_RATE_RPS` (default 50) — o SDK **não** faz backoff
     automático em 429; ajuste o rate no servidor ou reduza batch.
-  - `NDOVU_CORS_ORIGINS` — o browser precisa que a API libere o
-    domínio da SPA.
+  - Origens cadastradas em **Apps** autorizam o browser deste app. Para
+    apps legados sem origens, a API usa `NDOVU_CORS_ORIGINS` como allowlist.
 
 ## Como usar
 
@@ -133,8 +133,8 @@ pode "assinar" tráfego de outro frontend.
 
 - Browser moderno com `fetch`, `PerformanceObserver`, `crypto.randomUUID`,
   `sessionStorage`. IE11 não suportado.
-- CORS liberado no backend (`NDOVU_CORS_ORIGINS`) para o domínio do
-  frontend.
+- Origem HTTPS do frontend cadastrada no app em **Apps**. Sem origens no
+  cadastro, é necessário que o domínio esteja em `NDOVU_CORS_ORIGINS`.
 - O endpoint precisa aceitar `Content-Type: application/json` +
   header `X-Api-Key`.
 

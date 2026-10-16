@@ -434,6 +434,7 @@ export const api = {
   createApp: (input: {
     name: string;
     technology?: string;
+    allowedOrigins?: string[];
     company?: string;
     companyId?: string;
     responsible?: string;
@@ -443,6 +444,7 @@ export const api = {
     patch: {
       name?: string;
       technology?: string;
+      allowedOrigins?: string[];
       company?: string;
       companyId?: string;
       responsible?: string;

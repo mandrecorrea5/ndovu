@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -54,7 +55,13 @@ func AppScopeFrom(ctx context.Context) ([]string, bool) {
 // injeta a chave validada no contexto — o handler usa o app dono para vincular
 // o envelope ao frontend emissor. Aplica rate limit por chave: 429 com
 // Retry-After quando estourar (protege a ingestão de uma chave abusiva).
-func apiKeyAuth(keys *usecase.APIKeyService, metrics *platform.Metrics) func(http.Handler) http.Handler {
+func apiKeyAuth(keys *usecase.APIKeyService, metrics *platform.Metrics, corsOrigins string) func(http.Handler) http.Handler {
+	globalOrigins := map[string]bool{}
+	for _, origin := range strings.Split(corsOrigins, ",") {
+		if origin = strings.TrimSpace(origin); origin != "" {
+			globalOrigins[origin] = true
+		}
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			key, err := keys.Validate(r.Context(), r.Header.Get("X-Api-Key"))
@@ -64,6 +71,16 @@ func apiKeyAuth(keys *usecase.APIKeyService, metrics *platform.Metrics) func(htt
 				}
 				writeJSON(w, http.StatusUnauthorized, errorResponse{Error: "X-Api-Key ausente, inválida ou revogada"})
 				return
+			}
+			if origin := r.Header.Get("Origin"); origin != "" {
+				allowed := globalOrigins[origin]
+				if len(key.AllowedOrigins) > 0 {
+					allowed = slices.Contains(key.AllowedOrigins, origin)
+				}
+				if !allowed {
+					writeJSON(w, http.StatusForbidden, errorResponse{Error: "origem não autorizada para esta chave"})
+					return
+				}
 			}
 			if !keys.Allow(key) {
 				if metrics != nil {
@@ -190,10 +207,9 @@ func requireAnyRole(roles ...domain.Role) func(http.Handler) http.Handler {
 	}
 }
 
-// cors libera as origens configuradas (dashboard e SDKs em browser). Usa
-// wildcard no header de request quando a origem pedida está na allowlist —
-// necessário para credenciais (cookies) cross-origin funcionarem; o
-// wildcard literal "*" nunca é aceito junto de credenciais.
+// cors mantém a allowlist global para rotas autenticadas por sessão. A
+// preflight de ingestão é ampla porque ainda não contém a chave; apiKeyAuth
+// valida a origem real contra o app associado à chave antes de aceitar o POST.
 func cors(origins string) func(http.Handler) http.Handler {
 	allowed := map[string]bool{}
 	for _, o := range strings.Split(origins, ",") {
@@ -204,7 +220,15 @@ func cors(origins string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
-			if origin != "" && allowed[origin] {
+			if isIngestPath(r.URL.Path) {
+				if origin != "" {
+					w.Header().Set("Access-Control-Allow-Origin", origin)
+					w.Header().Set("Vary", "Origin")
+					w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+					w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Api-Key, Traceparent")
+					w.Header().Set("Access-Control-Max-Age", "600")
+				}
+			} else if origin != "" && allowed[origin] {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
 				w.Header().Set("Vary", "Origin")
 				w.Header().Set("Access-Control-Allow-Credentials", "true")
@@ -218,6 +242,15 @@ func cors(origins string) func(http.Handler) http.Handler {
 			}
 			next.ServeHTTP(w, r)
 		})
+	}
+}
+
+func isIngestPath(path string) bool {
+	switch path {
+	case "/v1/events", "/v1/snapshots", "/v1/feedbacks":
+		return true
+	default:
+		return false
 	}
 }
 

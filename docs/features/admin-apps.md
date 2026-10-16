@@ -22,16 +22,20 @@ primeira chave de API** para o time integrador começar a enviar eventos.
 ## Como usar
 
 1. Abra **Apps** — a listagem mostra nome, tecnologia, empresa,
-   responsável e data.
+   origens permitidas, responsável e data.
 2. Clique em **Novo app**. Preencha:
    - **Nome do app** (ex.: `portal-cliente`) — obrigatório e único.
    - **Tecnologia** (dropdown com `react`, `vue`, `angular`, etc.).
+   - **Origens permitidas do site** — uma origem HTTPS por linha, por
+     exemplo `https://cliente.com` e `https://www.cliente.com`. Informe
+     somente protocolo e domínio, sem caminho ou wildcard. A chave gerada
+     só aceita eventos do browser vindos dessas origens.
    - **Empresa** — selecione uma empresa ativa; se preferir digitar,
      deixe o select em branco e use o input de fallback.
    - **Responsável** (e-mail do owner).
 3. Ao salvar, aparece um card verde com a **chave gerada em claro**.
    Ela também fica disponível cifrada no histórico em `/admin/keys`.
-4. Use **editar** para trocar tecnologia/empresa/responsável.
+4. Use **editar** para trocar tecnologia, origens/empresa/responsável.
    **excluir** revoga todas as chaves do app antes de removê-lo (com
    confirmação: "Todas as chaves dele serão revogadas.").
 
@@ -39,11 +43,11 @@ primeira chave de API** para o time integrador começar a enviar eventos.
 
 - Cabeçalho **Apps** com botão **+ Novo app**.
 - Card verde após criação com a chave copiável e link para o histórico.
-- Tabela com **Nome**, **Tecnologia**, **Empresa**, **Responsável**,
-  **Criado em** e **Ações** (editar/excluir).
+- Tabela com **Nome**, **Tecnologia**, **Origens**, **Empresa**,
+  **Responsável**, **Criado em** e **Ações** (editar/excluir).
 - Estado vazio: "Nenhum app cadastrado — comece pelo botão 'Novo app'."
-- Modal de cadastro/edição com os quatro campos + fallback de empresa
-  em texto livre.
+- Modal de cadastro/edição com os campos do app, uma origem por linha e
+  fallback de empresa em texto livre.
 
 ## Como demonstrar
 
@@ -78,6 +82,16 @@ Roteiro de 60s:
   (revogar, criar novas) acontece lá.
 
 ## Perguntas frequentes
+
+- **"Preciso editar a variável global de CORS para cada cliente?"**
+  Não. Informe as origens no próprio app. A lista global
+  `NDOVU_CORS_ORIGINS` continua como compatibilidade para apps antigos sem
+  origens cadastradas e para outras integrações já configuradas.
+- **"A origem substitui a chave de API?"**
+  Não. É uma permissão de navegador para o app; a chave continua obrigatória.
+  Clientes não-browser podem enviar eventos sem o header `Origin`.
+- **"Posso usar `*.cliente.com`?"**
+  Não. Cadastre cada origem exata, incluindo `https://` e `www` quando usados.
 
 - **"Perdi a chave que apareceu na criação — como recupero?"**  
   Consulte-a em `/admin/keys`. Chaves criadas antes do armazenamento

@@ -60,7 +60,7 @@ Ordem de precedência no pod (a última vence):
 | Variável | dev | hml | prd | Nota |
 |----------|-----|-----|-----|------|
 | `NDOVU_PORT` | `8080` | `8080` | `8080` | porta do container |
-| `NDOVU_CORS_ORIGINS` | `*` | domínio hml | **lista explícita** | `*` em produção libera qualquer origem no backoffice |
+| `NDOVU_CORS_ORIGINS` | `*` | domínio hml | origens legadas explícitas | Allowlist global de compatibilidade; novos sites cadastram a origem no próprio app |
 | `NDOVU_MAX_BODY_BYTES` | `1048576` | `1048576` | `2097152` | teto do lote de eventos; casar com o `proxy-body-size` da Route |
 | `NDOVU_AUTH_TOKEN_TTL_HOURS` | `8` | `8` | `4` | validade do token de sessão |
 | `NDOVU_KEY_CACHE_TTL_SECONDS` | `30` | `30` | `30` | cache de validação de `X-Api-Key`; **é a latência de propagação de uma revogação** |
@@ -180,7 +180,7 @@ efeito quando não existe nenhuma chave cadastrada; depois disso é inerte.
 - [ ] `NDOVU_AUTH_SECRET` aleatório, ≥32 bytes, diferente de hml
 - [ ] `NDOVU_ADMIN_PASSWORD` aleatória; senha trocada no primeiro acesso
 - [ ] `NDOVU_BOOTSTRAP_INGEST_KEY` revogada após criar as chaves reais por app
-- [ ] `NDOVU_CORS_ORIGINS` com lista explícita, sem `*`
+- [ ] `NDOVU_CORS_ORIGINS` sem `*`; cadastrar novas origens web em cada app
 - [ ] `NDOVU_POSTGRES_URL` com `sslmode=require`
 - [ ] `NDOVU_S3_USE_SSL=true`
 - [ ] `NDOVU_STREAM_MAX_AGE_HOURS` casado com o PVC do NATS ([`CAPACITY.md`](CAPACITY.md))

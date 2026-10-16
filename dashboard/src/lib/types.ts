@@ -308,6 +308,7 @@ export interface App {
   id: string;
   name: string;
   technology?: string;
+  allowedOrigins: string[];
   companyId?: string;
   company?: string;
   responsible?: string;

@@ -48,6 +48,83 @@ func TestIngest_HappyPath202(t *testing.T) {
 	}
 }
 
+func TestIngest_OrigemPermitidaNoApp(t *testing.T) {
+	f := newFixture(t)
+	appID := f.seedApp("portal", "c-default")
+	app := f.apps.items[appID]
+	app.AllowedOrigins = []string{"https://site.example"}
+	f.apps.items[appID] = app
+	key := f.seedKey("portal")
+
+	req := f.keyRequest(http.MethodPost, "/v1/events", validEventEnvelope("portal"), key)
+	req.Header.Set("Origin", "https://site.example")
+	rr := f.do(req)
+	requireStatus(t, rr, http.StatusAccepted)
+	if got := rr.Header().Get("Access-Control-Allow-Origin"); got != "https://site.example" {
+		t.Errorf("Access-Control-Allow-Origin = %q", got)
+	}
+	if rr.Header().Get("Access-Control-Allow-Credentials") != "" {
+		t.Error("ingestão não deve liberar credenciais de sessão")
+	}
+}
+
+func TestIngest_OrigemForaDoAppRecebe403(t *testing.T) {
+	f := newFixture(t)
+	appID := f.seedApp("portal", "c-default")
+	app := f.apps.items[appID]
+	app.AllowedOrigins = []string{"https://site.example"}
+	f.apps.items[appID] = app
+	key := f.seedKey("portal")
+
+	req := f.keyRequest(http.MethodPost, "/v1/events", validEventEnvelope("portal"), key)
+	req.Header.Set("Origin", "https://outro.example")
+	rr := f.do(req)
+	requireStatus(t, rr, http.StatusForbidden)
+	if len(f.stream.published) != 0 {
+		t.Error("origem não autorizada não deveria publicar eventos")
+	}
+}
+
+func TestIngest_PreflightDeOrigemDoAppNaoUsaCORSGlobal(t *testing.T) {
+	f := newFixture(t)
+	req := httptest.NewRequest(http.MethodOptions, "/v1/events", nil)
+	req.Header.Set("Origin", "https://site.example")
+	req.Header.Set("Access-Control-Request-Method", "POST")
+	req.Header.Set("Access-Control-Request-Headers", "content-type,x-api-key")
+
+	rr := f.do(req)
+	requireStatus(t, rr, http.StatusNoContent)
+	if got := rr.Header().Get("Access-Control-Allow-Origin"); got != "https://site.example" {
+		t.Errorf("preflight não liberou a origem do app: %q", got)
+	}
+	if rr.Header().Get("Access-Control-Allow-Credentials") != "" {
+		t.Error("preflight de ingestão não deve permitir cookies")
+	}
+}
+
+func TestIngest_OrigemDoAppNaoAbreCORSAdmin(t *testing.T) {
+	f := newFixture(t)
+	req := httptest.NewRequest(http.MethodOptions, "/v1/admin/apps", nil)
+	req.Header.Set("Origin", "https://site.example")
+
+	rr := f.do(req)
+	requireStatus(t, rr, http.StatusNoContent)
+	if got := rr.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Errorf("origem de app não deve liberar rotas administrativas: %q", got)
+	}
+}
+
+func TestIngest_OrigemGlobalMantemCompatibilidadeParaAppSemOrigens(t *testing.T) {
+	f := newFixture(t)
+	f.seedApp("portal", "c-default")
+	key := f.seedKey("portal")
+
+	req := f.keyRequest(http.MethodPost, "/v1/events", validEventEnvelope("portal"), key)
+	req.Header.Set("Origin", "https://dashboard.example")
+	rr := f.do(req)
+	requireStatus(t, rr, http.StatusAccepted)
+}
+
 func TestIngest_SemChave401(t *testing.T) {
 	f := newFixture(t)
 	rr := f.do(f.req(http.MethodPost, "/v1/events", validEventEnvelope("portal")))

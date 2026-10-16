@@ -83,16 +83,17 @@ type CompanyStore interface {
 // APIKey identifica um app emissor na ingestão. Key é preenchida apenas nas
 // respostas administrativas; EncryptedKey é persistida cifrada e nunca serializada.
 type APIKey struct {
-	ID           string     `json:"id"`
-	AppID        string     `json:"appId,omitempty"`
-	App          string     `json:"app"`
-	Label        string     `json:"label,omitempty"`
-	Prefix       string     `json:"prefix"`
-	Key          string     `json:"key,omitempty"`
-	EncryptedKey string     `json:"-"`
-	Active       bool       `json:"active"`
-	CreatedAt    time.Time  `json:"createdAt"`
-	RevokedAt    *time.Time `json:"revokedAt,omitempty"`
+	ID             string     `json:"id"`
+	AppID          string     `json:"appId,omitempty"`
+	App            string     `json:"app"`
+	AllowedOrigins []string   `json:"-"`
+	Label          string     `json:"label,omitempty"`
+	Prefix         string     `json:"prefix"`
+	Key            string     `json:"key,omitempty"`
+	EncryptedKey   string     `json:"-"`
+	Active         bool       `json:"active"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	RevokedAt      *time.Time `json:"revokedAt,omitempty"`
 }
 
 // App é um frontend emissor cadastrado no control plane. O cadastro guarda os
@@ -100,14 +101,15 @@ type APIKey struct {
 // CompanyID é opcional (nem todo app está atrelado a uma empresa cadastrada);
 // Company mantém o valor exibível resolvido a partir do FK.
 type App struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Technology  string    `json:"technology,omitempty"`
-	CompanyID   string    `json:"companyId,omitempty"`
-	Company     string    `json:"company,omitempty"`
-	Responsible string    `json:"responsible,omitempty"`
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	ID             string    `json:"id"`
+	Name           string    `json:"name"`
+	Technology     string    `json:"technology,omitempty"`
+	AllowedOrigins []string  `json:"allowedOrigins"`
+	CompanyID      string    `json:"companyId,omitempty"`
+	Company        string    `json:"company,omitempty"`
+	Responsible    string    `json:"responsible,omitempty"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
 // Identity é o resultado da verificação de um token: quem está chamando.
@@ -209,21 +211,21 @@ func (s FeedbackStatus) Valid() bool {
 // widget do SDK. Vive por session_id (sempre); event_id é o último trace em
 // memória quando o widget foi aberto (opcional — pode não haver erro).
 type UserFeedback struct {
-	ID          string         `json:"id"`
-	App         string         `json:"app"`
-	SessionID   string         `json:"sessionId"`
-	EventID     string         `json:"eventId,omitempty"`
-	UserID      string         `json:"userId,omitempty"`
-	Type        FeedbackType   `json:"type"`
-	Message     string         `json:"message"`
-	Email       string         `json:"email,omitempty"`
-	URL         string         `json:"url,omitempty"`
-	ViewportW   int            `json:"viewportW,omitempty"`
-	ViewportH   int            `json:"viewportH,omitempty"`
-	Status      FeedbackStatus `json:"status"`
-	ResolvedBy  string         `json:"resolvedBy,omitempty"`
-	ResolvedAt  *time.Time     `json:"resolvedAt,omitempty"`
-	CreatedAt   time.Time      `json:"createdAt"`
+	ID         string         `json:"id"`
+	App        string         `json:"app"`
+	SessionID  string         `json:"sessionId"`
+	EventID    string         `json:"eventId,omitempty"`
+	UserID     string         `json:"userId,omitempty"`
+	Type       FeedbackType   `json:"type"`
+	Message    string         `json:"message"`
+	Email      string         `json:"email,omitempty"`
+	URL        string         `json:"url,omitempty"`
+	ViewportW  int            `json:"viewportW,omitempty"`
+	ViewportH  int            `json:"viewportH,omitempty"`
+	Status     FeedbackStatus `json:"status"`
+	ResolvedBy string         `json:"resolvedBy,omitempty"`
+	ResolvedAt *time.Time     `json:"resolvedAt,omitempty"`
+	CreatedAt  time.Time      `json:"createdAt"`
 }
 
 // FeedbackFilter para consulta paginada no backoffice.

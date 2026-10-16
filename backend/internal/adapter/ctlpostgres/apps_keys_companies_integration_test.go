@@ -74,7 +74,8 @@ func TestApps_CRUDBasico(t *testing.T) {
 	cID := firstCompanyID(t, repo)
 
 	a, err := repo.CreateApp(ctx, domain.App{
-		Name: "portal", Technology: "React", CompanyID: cID, Responsible: "ana@x",
+		Name: "portal", Technology: "React", AllowedOrigins: []string{"https://www.example.com"},
+		CompanyID: cID, Responsible: "ana@x",
 	})
 	if err != nil {
 		t.Fatalf("create: %v", err)
@@ -87,7 +88,8 @@ func TestApps_CRUDBasico(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
-	if got.Name != "portal" || got.CompanyID != cID {
+	if got.Name != "portal" || got.CompanyID != cID ||
+		len(got.AllowedOrigins) != 1 || got.AllowedOrigins[0] != "https://www.example.com" {
 		t.Errorf("get errado: %+v", got)
 	}
 
@@ -97,6 +99,9 @@ func TestApps_CRUDBasico(t *testing.T) {
 	}
 	if byName.ID != a.ID {
 		t.Error("get by name errado")
+	}
+	if len(byName.AllowedOrigins) != 1 || byName.AllowedOrigins[0] != "https://www.example.com" {
+		t.Errorf("origens não persistidas na consulta por nome: %+v", byName.AllowedOrigins)
 	}
 }
 
@@ -157,12 +162,14 @@ func TestApps_UpdateEDelete(t *testing.T) {
 	a, _ := repo.CreateApp(ctx, domain.App{Name: "orig", CompanyID: cID})
 
 	updated, err := repo.UpdateApp(ctx, a.ID, domain.App{
-		Name: "renomeado", Technology: "Vue", CompanyID: cID, Responsible: "b",
+		Name: "renomeado", Technology: "Vue", AllowedOrigins: []string{"https://new.example"},
+		CompanyID: cID, Responsible: "b",
 	})
 	if err != nil {
 		t.Fatalf("update: %v", err)
 	}
-	if updated.Name != "renomeado" || updated.Technology != "Vue" {
+	if updated.Name != "renomeado" || updated.Technology != "Vue" ||
+		len(updated.AllowedOrigins) != 1 || updated.AllowedOrigins[0] != "https://new.example" {
 		t.Errorf("update falhou: %+v", updated)
 	}
 
@@ -180,7 +187,9 @@ func TestAPIKeys_CRUD(t *testing.T) {
 	repo := testenv.StartPostgres(t)
 	ctx := context.Background()
 	cID := firstCompanyID(t, repo)
-	app, _ := repo.CreateApp(ctx, domain.App{Name: "portal", CompanyID: cID})
+	app, _ := repo.CreateApp(ctx, domain.App{
+		Name: "portal", CompanyID: cID, AllowedOrigins: []string{"https://site.example"},
+	})
 
 	k, err := repo.CreateAPIKey(ctx, domain.APIKey{
 		App: "portal", AppID: app.ID, Label: "prod", Prefix: "ndk_abc123",
@@ -206,6 +215,9 @@ func TestAPIKeys_CRUD(t *testing.T) {
 	}
 	if found.ID != k.ID {
 		t.Errorf("hash lookup errado")
+	}
+	if len(found.AllowedOrigins) != 1 || found.AllowedOrigins[0] != "https://site.example" {
+		t.Errorf("domínios não vieram com a chave autenticada: %+v", found.AllowedOrigins)
 	}
 }
 

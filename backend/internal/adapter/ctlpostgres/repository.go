@@ -423,8 +423,12 @@ func (r *Repository) RevokeAPIKey(ctx context.Context, id string) error {
 func (r *Repository) FindActiveKeyByHash(ctx context.Context, keyHash string) (domain.APIKey, error) {
 	var k domain.APIKey
 	err := r.pool.QueryRow(ctx,
-		`SELECT `+keyColumns+` FROM api_keys WHERE key_hash = $1 AND active`, keyHash).
-		Scan(&k.ID, &k.AppID, &k.App, &k.Label, &k.Prefix, &k.Active, &k.CreatedAt, &k.RevokedAt)
+		`SELECT k.id, COALESCE(k.app_id::text, '') AS app_id, k.app, k.label, k.key_prefix,
+		        k.active, k.created_at, k.revoked_at, COALESCE(a.allowed_origins, '{}'::text[])
+		 FROM api_keys k
+		 LEFT JOIN apps a ON a.id = k.app_id
+		 WHERE k.key_hash = $1 AND k.active`, keyHash).
+		Scan(&k.ID, &k.AppID, &k.App, &k.Label, &k.Prefix, &k.Active, &k.CreatedAt, &k.RevokedAt, &k.AllowedOrigins)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.APIKey{}, domain.ErrNotFound
 	}
@@ -456,22 +460,25 @@ func (r *Repository) GetAPIKeyByID(ctx context.Context, id string) (domain.APIKe
 
 // appSelect resolve o nome da empresa via LEFT JOIN (apps.company_id é opcional).
 // Fallback para o campo texto legado apps.company quando não houver FK.
-const appSelect = `a.id, a.name, a.technology,
+const appSelect = `a.id, a.name, a.technology, a.allowed_origins,
 	COALESCE(a.company_id::text, '') AS company_id,
 	COALESCE(c.name, a.company) AS company,
 	a.responsible, a.created_at, a.updated_at`
 
 // CreateApp insere um app emissor; nome duplicado vira ErrConflict.
 func (r *Repository) CreateApp(ctx context.Context, a domain.App) (domain.App, error) {
+	if a.AllowedOrigins == nil {
+		a.AllowedOrigins = []string{}
+	}
 	err := r.pool.QueryRow(ctx, `
 		WITH inserted AS (
-			INSERT INTO apps (name, technology, company, responsible, company_id)
-			VALUES ($1, $2, $3, $4, NULLIF($5, '')::uuid)
-			RETURNING id, name, technology, company, responsible, company_id, created_at, updated_at
+			INSERT INTO apps (name, technology, company, responsible, allowed_origins, company_id)
+			VALUES ($1, $2, $3, $4, $5, NULLIF($6, '')::uuid)
+			RETURNING id, name, technology, company, responsible, allowed_origins, company_id, created_at, updated_at
 		)
 		SELECT `+appSelect+` FROM inserted a LEFT JOIN companies c ON c.id = a.company_id`,
-		a.Name, a.Technology, a.Company, a.Responsible, a.CompanyID).
-		Scan(&a.ID, &a.Name, &a.Technology, &a.CompanyID, &a.Company, &a.Responsible, &a.CreatedAt, &a.UpdatedAt)
+		a.Name, a.Technology, a.Company, a.Responsible, a.AllowedOrigins, a.CompanyID).
+		Scan(&a.ID, &a.Name, &a.Technology, &a.AllowedOrigins, &a.CompanyID, &a.Company, &a.Responsible, &a.CreatedAt, &a.UpdatedAt)
 	if isUniqueViolation(err) {
 		return domain.App{}, fmt.Errorf("app %s: %w", a.Name, domain.ErrConflict)
 	}
@@ -489,7 +496,7 @@ func (r *Repository) GetApp(ctx context.Context, id string) (domain.App, error) 
 	var a domain.App
 	err := r.pool.QueryRow(ctx,
 		`SELECT `+appSelect+` FROM apps a LEFT JOIN companies c ON c.id = a.company_id WHERE a.id = $1`, id).
-		Scan(&a.ID, &a.Name, &a.Technology, &a.CompanyID, &a.Company, &a.Responsible, &a.CreatedAt, &a.UpdatedAt)
+		Scan(&a.ID, &a.Name, &a.Technology, &a.AllowedOrigins, &a.CompanyID, &a.Company, &a.Responsible, &a.CreatedAt, &a.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.App{}, domain.ErrNotFound
 	}
@@ -505,7 +512,7 @@ func (r *Repository) GetAppByName(ctx context.Context, name string) (domain.App,
 	var a domain.App
 	err := r.pool.QueryRow(ctx,
 		`SELECT `+appSelect+` FROM apps a LEFT JOIN companies c ON c.id = a.company_id WHERE a.name = $1`, name).
-		Scan(&a.ID, &a.Name, &a.Technology, &a.CompanyID, &a.Company, &a.Responsible, &a.CreatedAt, &a.UpdatedAt)
+		Scan(&a.ID, &a.Name, &a.Technology, &a.AllowedOrigins, &a.CompanyID, &a.Company, &a.Responsible, &a.CreatedAt, &a.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.App{}, domain.ErrNotFound
 	}
@@ -527,7 +534,7 @@ func (r *Repository) ListApps(ctx context.Context) ([]domain.App, error) {
 	apps := []domain.App{}
 	for rows.Next() {
 		var a domain.App
-		if err := rows.Scan(&a.ID, &a.Name, &a.Technology, &a.CompanyID, &a.Company,
+		if err := rows.Scan(&a.ID, &a.Name, &a.Technology, &a.AllowedOrigins, &a.CompanyID, &a.Company,
 			&a.Responsible, &a.CreatedAt, &a.UpdatedAt); err != nil {
 			return nil, err
 		}
@@ -551,7 +558,7 @@ func (r *Repository) ListAppsByCompany(ctx context.Context, companyID string) ([
 	apps := []domain.App{}
 	for rows.Next() {
 		var a domain.App
-		if err := rows.Scan(&a.ID, &a.Name, &a.Technology, &a.CompanyID, &a.Company,
+		if err := rows.Scan(&a.ID, &a.Name, &a.Technology, &a.AllowedOrigins, &a.CompanyID, &a.Company,
 			&a.Responsible, &a.CreatedAt, &a.UpdatedAt); err != nil {
 			return nil, err
 		}
@@ -562,6 +569,9 @@ func (r *Repository) ListAppsByCompany(ctx context.Context, companyID string) ([
 
 // UpdateApp altera os metadados de um app (campos vazios sobrescrevem).
 func (r *Repository) UpdateApp(ctx context.Context, id string, a domain.App) (domain.App, error) {
+	if a.AllowedOrigins == nil {
+		a.AllowedOrigins = []string{}
+	}
 	var out domain.App
 	err := r.pool.QueryRow(ctx, `
 		WITH updated AS (
@@ -570,14 +580,15 @@ func (r *Repository) UpdateApp(ctx context.Context, id string, a domain.App) (do
 				technology  = $3,
 				company     = $4,
 				responsible = $5,
-				company_id  = NULLIF($6, '')::uuid,
+				allowed_origins = $6,
+				company_id  = NULLIF($7, '')::uuid,
 				updated_at  = now()
 			WHERE id = $1
-			RETURNING id, name, technology, company, responsible, company_id, created_at, updated_at
+			RETURNING id, name, technology, company, responsible, allowed_origins, company_id, created_at, updated_at
 		)
 		SELECT `+appSelect+` FROM updated a LEFT JOIN companies c ON c.id = a.company_id`,
-		id, a.Name, a.Technology, a.Company, a.Responsible, a.CompanyID).
-		Scan(&out.ID, &out.Name, &out.Technology, &out.CompanyID, &out.Company, &out.Responsible,
+		id, a.Name, a.Technology, a.Company, a.Responsible, a.AllowedOrigins, a.CompanyID).
+		Scan(&out.ID, &out.Name, &out.Technology, &out.AllowedOrigins, &out.CompanyID, &out.Company, &out.Responsible,
 			&out.CreatedAt, &out.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.App{}, domain.ErrNotFound

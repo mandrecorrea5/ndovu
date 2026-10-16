@@ -120,6 +120,7 @@ func newFixture(t *testing.T) *testFixture {
 	// Router real (mesmo do main), com openapi fs vazio (não exercitamos /docs).
 	f.router = NewRouter(f.handlers, config.Config{
 		MaxBodyBytes: 1 << 20,
+		CORSOrigins:  "https://dashboard.example",
 	}, authSvc, keySvc, f.apps, f.perms, nil, logger, emptyFS)
 
 	return f
@@ -242,6 +243,16 @@ func (f *testFixture) seedKey(appName string) string {
 	created, err := keySvc.CreateKey(context.Background(), "", appName, "test-key", "")
 	if err != nil {
 		f.t.Fatalf("seed key: %v", err)
+	}
+	app, err := f.apps.GetAppByName(context.Background(), appName)
+	if err != nil {
+		f.t.Fatalf("resolve seeded app: %v", err)
+	}
+	for id, key := range f.keys.keys {
+		if key.ID == created.ID {
+			key.AllowedOrigins = app.AllowedOrigins
+			f.keys.keys[id] = key
+		}
 	}
 	return created.Key
 }
