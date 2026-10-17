@@ -55,7 +55,7 @@ com `navigator.sendBeacon`/fetch no unload.
 | Campo               | Tipo   | Obrigatório | Descrição |
 |---------------------|--------|-------------|-----------|
 | `app`               | string | sim         | Identificador do frontend emissor. **Deve bater com o app da chave.** |
-| `sdkVersion`        | string | não         | Versão do SDK/instrumentação (ex.: `"1.2.0"`) |
+| `sdkVersion`        | string | não         | Versão do SDK/instrumentação (ex.: `"1.3.0"`). Não tem coluna própria: o backend grava em `session.attributes.sdkVersion`, persistido na coluna `session_attrs`. Consulte com `JSONExtractString(session_attrs, 'sdkVersion')`. Valor do envelope vence um posto à mão em `attributes` |
 | `session.sessionId` | string | sim         | ID único da sessão (UUID gerado no frontend) |
 | `session.userId`    | string | não*        | ID do usuário autenticado. *Recomendado; eventos anônimos são aceitos e correlacionáveis pela sessão |
 | `session.userAgent` | string | não         | User agent / device info |

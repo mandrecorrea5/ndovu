@@ -8,12 +8,15 @@ por cópia do arquivo (docs/INTEGRATION.md, "Opção A") e não tem um
 A versão canônica de cada entry point é a constante `SDK_VERSION` no topo do
 arquivo, e é ela que viaja no campo `sdkVersion` do envelope.
 
-Nota: o backend hoje **recebe** `sdkVersion` e descarta — o campo está no
-contrato (`docs/CONTRACT.md`) e no OpenAPI, é parseado em
-`httpapi/dto.go:14`, mas `toDomain()` não o propaga e não há coluna para ele no
-ClickHouse. Portanto não dá para consultar de que versão está um app. Isso é
-mudança de backend pendente, e é a razão de a rastreabilidade desta versão vir
-por tag e release anexada, não por medição.
+Nota: até aqui o backend **recebia** `sdkVersion` e descartava — o
+`httpapi/dto.go:14` fazia o parse, mas o `toDomain()` não propagava e não havia
+teste na fronteira. Corrigido no backend logo após esta release (pendente de
+deploy): o valor passa a ser gravado em `session.attributes.sdkVersion`, coluna
+`session_attrs` que já existia. Sem migration e sem release de cliente.
+
+Como a correção é do lado do servidor, ela alcança quem **não** atualizou: um app
+parado na 1.0.0 passa a aparecer como `1.0.0` no dado. Consulte com
+`JSONExtractString(session_attrs, 'sdkVersion')`.
 
 ## 1.3.0 — 2026-10-17
 

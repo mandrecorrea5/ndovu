@@ -122,6 +122,32 @@ func normalizeBatch(b *domain.IngestBatch, now time.Time) {
 	if len(b.Session.Attributes) == 0 {
 		b.Session.Attributes = []byte(`{}`)
 	}
+	injectSDKVersion(b)
+}
+
+// injectSDKVersion grava o `sdkVersion` do envelope em session.attributes, de
+// onde a coluna session_attrs já o persiste. O valor do envelope vence um
+// `sdkVersion` que o cliente tenha posto em session.attributes à mão, porque o
+// do envelope é o campo contratual (docs/CONTRACT.md) e o que o SDK realmente
+// carrega.
+//
+// Atributos que não são um objeto JSON ficam intactos e sem injeção. O DTO é
+// json.RawMessage, então um array ou string passa pela validação; sobrescrever
+// ali jogaria fora dado do cliente para ganhar uma coluna.
+func injectSDKVersion(b *domain.IngestBatch) {
+	if b.SDKVersion == "" {
+		return
+	}
+	var m map[string]any
+	if err := json.Unmarshal(b.Session.Attributes, &m); err != nil || m == nil {
+		return
+	}
+	m["sdkVersion"] = b.SDKVersion
+	encoded, err := json.Marshal(m)
+	if err != nil {
+		return
+	}
+	b.Session.Attributes = encoded
 }
 
 // extractRelease lê "release" do JSON de atributos da sessão. Retorna string

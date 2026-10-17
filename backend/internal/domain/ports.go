@@ -9,6 +9,10 @@ import (
 type IngestBatch struct {
 	Session Session
 	Events  []TraceEvent
+	// SDKVersion é o campo `sdkVersion` do envelope. normalizeBatch o grava em
+	// session.attributes.sdkVersion, que já é persistido pela coluna
+	// session_attrs. Não tem coluna própria de propósito: sem migration.
+	SDKVersion string
 }
 
 // IngestResult resume o resultado de um lote (eventos enfileirados/persistidos).

@@ -62,6 +62,7 @@ type errorDTO struct {
 // toDomain converte o DTO validável em entidades de domínio.
 func (r ingestRequest) toDomain() domain.IngestBatch {
 	batch := domain.IngestBatch{
+		SDKVersion: r.SDKVersion,
 		Session: domain.Session{
 			SessionID:  r.Session.SessionID,
 			UserID:     r.Session.UserID,
