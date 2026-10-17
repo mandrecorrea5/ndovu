@@ -28,6 +28,28 @@
  *
  * Sem JSX de propósito: assim o arquivo passa `node --check` do CI e pode
  * ser copiado como fonte única em qualquer projeto Next sem etapa de build.
+ *
+ * ROTAS DINÂMICAS EXIGEM `screenName`. Sem ele o pathname cru vira o nome da
+ * tela — e `pageView` compõe o nome do evento como `tela_${screen}`, então
+ * `/atleta/rafa-silva` e `/atleta/thiago-felix` viram DUAS telas no dashboard e
+ * DOIS nomes de evento no mesmo group-by. Você quer agrupar pelo shape da
+ * rota, não pela instância. Mapeie para o template:
+ *
+ *   const SCREENS = [
+ *     [/^\/atleta\/[^/]+$/, '/atleta/[slug]'],
+ *     [/^\/clubes\/[^/]+$/, '/clubes/[id]'],
+ *   ];
+ *   const screenName = (p) => (SCREENS.find(([re]) => re.test(p)) ?? [])[1] ?? p;
+ *
+ *   <NdovuAutoRouter screenName={screenName} />
+ *
+ * É opt-in de propósito: colapsar segmento dinâmico por default mudaria o nome
+ * das telas de quem hoje depende do path completo.
+ *
+ * E crie a instância em escopo de módulo (exemplo acima), nunca dentro de
+ * componente. O SDK não tem destroy() — nenhum clearInterval em lugar nenhum —
+ * então instanciar no corpo do componente significa uma sessão, uma fila e um
+ * setInterval novos por render, sem como desfazer os anteriores.
  */
 
 'use client';

@@ -68,7 +68,8 @@ src/
   ndovu-node.js
   ndovu-react-native.js
 tools/seed/            gerador de sessões realistas (login, 2ª via, fatura, PIX, erros)
-test/contract/         validação contra o openapi.yaml do ndovu-backend
+test/                  flush-browser.mjs e flush-react-native.mjs — comportamento de
+                       reenvio/descarte do flush, em node puro, encadeado no `check`
 ```
 
 ## Uso
@@ -95,6 +96,36 @@ A chave de API é **por app emissor**, gerada e revogada no backoffice. Ela vai
 para o bundle do frontend, então é pública por natureza: o controle real é a
 revogação imediata pela tela de Chaves de API (propagação em até
 `NDOVU_KEY_CACHE_TTL_SECONDS`) e o rate limit por chave no servidor.
+
+### Rotas dinâmicas no Next (`NdovuAutoRouter`)
+
+`NdovuAutoRouter` usa o `pathname` cru como nome de tela, e `pageView` compõe o
+nome do evento como `tela_${screen}`. Em rota dinâmica isso **multiplica a
+cardinalidade**: `/atleta/rafa-silva` e `/atleta/thiago-felix` viram duas telas
+no dashboard e dois nomes de evento no mesmo group-by.
+
+Passe `screenName` colapsando o segmento para o template da rota:
+
+```jsx
+const SCREENS = [
+  [/^\/atleta\/[^/]+$/, '/atleta/[slug]'],
+  [/^\/clubes\/[^/]+$/, '/clubes/[id]'],
+];
+const screenName = (p) => (SCREENS.find(([re]) => re.test(p)) ?? [])[1] ?? p;
+
+<NdovuAutoRouter screenName={screenName} />;
+```
+
+É **obrigatório na prática** para qualquer app com ID ou slug na URL, e continua
+opt-in no código: colapsar por default mudaria o nome das telas de quem já
+depende do path completo. Cobre também `instrumentFetch()` — uma `http_request`
+por `/atleta/<slug>` tem o mesmo efeito.
+
+Dois detalhes do mesmo componente: a instância do SDK precisa ficar em
+**escopo de módulo**, nunca dentro de componente (não há `destroy()`, então cada
+render criaria sessão, fila e `setInterval` sem desfazer os anteriores); e
+`includeSearch` re-dispara `pageView` a cada mudança de querystring — ligue só
+onde a query é de fato uma tela nova.
 
 ## Carga de exemplo
 
