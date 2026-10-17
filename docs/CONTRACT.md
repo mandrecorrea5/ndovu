@@ -1,9 +1,10 @@
 # Ndovu — Contrato de Ingestão v1
 
-Qualquer frontend (web, mobile, desktop, TV, kiosk) pode enviar dados para o
-Ndovu, independente de tecnologia, desde que respeite este contrato. Esta é
+Qualquer frontend (web, mobile, desktop, TV, kiosk) ou backend (incluindo Go)
+pode enviar dados para o Ndovu, independente de tecnologia, desde que respeite
+este contrato. Esta é
 a **spec de referência** — todos os SDKs oficiais (`ndovu-browser`,
-`ndovu-node`, `ndovu-next`, `ndovu-react-native`) implementam este contrato,
+`ndovu-node`, `ndovu-next`, `ndovu-react-native`, `ndovu-go`) implementam este contrato,
 mas nenhum é obrigatório: qualquer cliente HTTP que envie o JSON esperado
 está integrado.
 

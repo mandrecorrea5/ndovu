@@ -14,15 +14,45 @@ especificado está integrada, com ou sem SDK. Estes pacotes existem para que o
 time de frontend não reescreva batching, retry, redação de dados sensíveis e
 captura de erro global em cada projeto.
 
-| Pacote | Alvo | Recursos específicos |
-|--------|------|----------------------|
+| SDK | Alvo | Recursos específicos |
+|-----|------|----------------------|
 | `ndovu-browser` | Web (qualquer framework) | `window.onerror`, `unhandledrejection`, Web Vitals (LCP, CLS, INP, FID, TTFB, FCP), breadcrumbs, instrumentação de `fetch` |
 | `ndovu-next` | Next.js | Integração com App Router e server components |
 | `ndovu-node` | Backend Node | Propagação W3C trace context |
 | `ndovu-react-native` | Mobile | Ciclo de vida do app, sem APIs de DOM |
+| `ndovu-go` | Backend Go | Batching, flush periódico/explícito e redaction de campos sensíveis |
 
 Todos com dependências zero e a mesma superfície: `pageView`, `action`,
 `error`, `http`, com `userId` + `sessionId` amarrando o rastro.
+
+O módulo Go fica em `go/` e é independente do módulo Node:
+
+```go
+import ndovu "github.com/mandrecorrea5/ndovu/sdk/go"
+
+client, err := ndovu.New(ndovu.Config{
+    Endpoint: "https://api.ndovu.solutions",
+    APIKey:   os.Getenv("NDOVU_API_KEY"),
+    App:      "portal-cliente",
+    Release:  "1.2.3",
+})
+if err != nil {
+    return err
+}
+defer client.Close(ctx)
+
+if err := client.Action("pedido_criado", ndovu.EventOptions{
+    Feature:  "pedidos",
+    Metadata: map[string]any{"orderId": "ord-123"},
+}); err != nil {
+    return err
+}
+```
+
+`Close(ctx)` faz o flush final; chame-o no encerramento gracioso da aplicação.
+O flusher periódico reporta erros via `Config.OnError` e preserva eventos não
+enviados para a próxima tentativa. Para mais detalhes, consulte
+[`go/README.md`](go/README.md).
 
 Redação de dados sensíveis acontece **no cliente, antes do envio** — a regex
 de `REDACT_KEYS` cobre senha, token, secret, authorization, cvv e cartão.

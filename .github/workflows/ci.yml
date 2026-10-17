@@ -55,6 +55,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: sdk/go/go.mod
       - name: Parse SDKs
         working-directory: sdk
         run: npm run check
@@ -64,3 +68,9 @@ jobs:
       - name: Import React Native SDK (sanity — sem executar createNdovu)
         working-directory: sdk
         run: node -e "import('./src/ndovu-react-native.js').then(m => { if (!m.createNdovu) throw new Error('createNdovu export missing'); console.log('SDK RN ok'); })"
+      - name: Test Go SDK
+        working-directory: sdk/go
+        run: go test -race ./...
+      - name: Vet Go SDK
+        working-directory: sdk/go
+        run: go vet ./...
