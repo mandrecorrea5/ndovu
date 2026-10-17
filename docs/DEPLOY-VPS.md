@@ -27,7 +27,7 @@ de desenvolvimento.
 | `NEXT_PUBLIC_NDOVU_API` | Mantida apenas por compatibilidade de build. O dashboard é **same-origin**: a UI chama `/api/*` do próprio Next (BFF), e o BFF chama a API via rede interna (`NDOVU_API=http://api:8080`, já fixo no Compose de produção). O token não transita mais pelo browser. |
 | `NDOVU_APP_DOMAIN`, `NDOVU_API_DOMAIN` | Hostnames públicos do dashboard e da API, cadastrados no Cloudflare Tunnel e roteados pelo Caddy. |
 | `NDOVU_CLOUDFLARED_TUNNEL_TOKEN` | Token secreto do Tunnel criado no Cloudflare Zero Trust. Guarde no `.env.production` (ou nas variáveis protegidas da stack no Portainer), nunca no Git. |
-| `NDOVU_S3_ENDPOINT`, `NDOVU_S3_ACCESS_KEY`, `NDOVU_S3_SECRET_KEY`, `NDOVU_SNAPSHOT_BUCKET` | Credenciais e bucket privados de snapshots. `NDOVU_S3_USE_SSL` é forçado a `true` no perfil de produção. |
+| `NDOVU_S3_ENDPOINT`, `NDOVU_S3_ACCESS_KEY`, `NDOVU_S3_SECRET_KEY`, `NDOVU_SNAPSHOT_BUCKET` | Credenciais e bucket privados de snapshots. `NDOVU_S3_USE_SSL` é forçado a `true` no perfil de produção. Provisionamento — criação do bucket, policy, retenção: seção "Bucket de snapshots no R2". |
 | `NDOVU_CLICKHOUSE_S3_ENDPOINT`, `NDOVU_CLICKHOUSE_S3_ACCESS_KEY`, `NDOVU_CLICKHOUSE_S3_SECRET_KEY` | Credenciais próprias do cold tier do ClickHouse. Use um bucket R2 separado, como `ndovu-cold`; o endpoint deve terminar com `/ndovu-cold/`. |
 | `NDOVU_PG_BACKUP_S3_ENDPOINT`, `NDOVU_PG_BACKUP_S3_ACCESS_KEY`, `NDOVU_PG_BACKUP_S3_SECRET_KEY`, `NDOVU_PG_BACKUP_BUCKET` | Credenciais exclusivas do bucket `ndovu-prod-backups`; o endpoint HTTPS do R2 deve apontar para a conta. |
 | `NDOVU_PG_BACKUP_AGE_RECIPIENT` | Recipient público age (`age1...`). A identidade privada correspondente deve ser guardada fora da VPS. |
@@ -131,6 +131,164 @@ Antes de apontar uma instalação com dados existentes para o novo cold tier,
 faça backup e valide o estado das tabelas/políticas. A alteração de endpoint
 não deve ser usada para mover ou apagar parts manualmente; a movimentação deve
 ser feita pelo TTL/ClickHouse após a configuração ser validada.
+
+## Bucket de snapshots no R2
+
+O replay de sessão grava HTML gzip'ado num bucket S3-compatível. Em produção o
+bucket é `ndovu-snapshots` no **R2** — não no MinIO. O MinIO do Compose existe
+só para desenvolvimento local: `docker-compose.prod.yml` zera as portas e o
+tranca no profile `local-minio`, então o Compose de produção nunca o sobe
+(`docs/CAPACITY-VPS.md` §7 também assume R2).
+
+O bucket fica **100% privado**. O dashboard não fala com o R2: o handler
+`GetSnapshot` lê o objeto, descompacta e devolve `text/html` pela API, e o BFF do
+dashboard repassa. Não configure política de acesso público, presigned URL nem
+CORS para este bucket — nada nesse caminho precisa.
+
+### Quem precisa das credenciais
+
+Só o serviço `api`. A validação de produção que exige storage está dentro do
+ramo `component == "api"` (`internal/config/config.go:235`), e exige
+`NDOVU_S3_ENDPOINT`, `NDOVU_S3_ACCESS_KEY`, `NDOVU_S3_SECRET_KEY`,
+`NDOVU_SNAPSHOT_BUCKET` e `NDOVU_S3_USE_SSL=true`. O `writer` consome NATS e
+grava no ClickHouse; ele roda com `LoadFor("writer")` (`cmd/writer/main.go:33`),
+que não valida storage, e por isso o Compose de produção **zera** essas três
+variáveis no serviço `writer` de propósito. Não copie credencial de S3 para o
+writer ao "consertar" ausência.
+
+`NDOVU_S3_USE_SSL` é fixado em `"true"` pelo próprio Compose de produção
+(`docker-compose.prod.yml`, serviço `api`). **Não defina no `.env.production`**:
+o valor do Compose vence, e a variável ausente no arquivo não é erro de config.
+Para rodar contra um R2/S3 real em ambiente local, aí sim defina
+`NDOVU_S3_USE_SSL=true` — o Compose base tem default `false`
+(`docker-compose.yml:26`), que é o valor correto para o MinIO local.
+
+### Criar o bucket
+
+O `minio-init` do Compose base é o único que cria bucket, e ele fica de fora da
+produção. Em produção o bucket **não é criado por ninguém** — crie antes de
+subir a API. Sem o bucket, o boot do `api` falha com
+`bucket ndovu-snapshots não existe — cria via minio-init`
+(`internal/adapter/blobstore/minio.go:46`); o serviço não degrada, ele não sobe.
+
+```bash
+# <acct> = account ID do R2 (aparece no dashboard da Cloudflare)
+aws configure set aws_access_key_id     "$NDOVU_S3_ACCESS_KEY"   --profile r2
+aws configure set aws_secret_access_key "$NDOVU_S3_SECRET_KEY"   --profile r2
+aws configure set region auto                                    --profile r2
+
+aws s3api create-bucket \
+  --bucket ndovu-snapshots \
+  --endpoint-url "https://<acct>.s3.r2.cloudflarestorage.com" \
+  --profile r2
+```
+
+`ndovu-snapshots` é o default de `NDOVU_SNAPSHOT_BUCKET`
+(`internal/config/config.go:181`). Usando esse nome, a variável dispensa definição.
+
+### Formato do endpoint
+
+Sem scheme. O adapter repassa `cfg.Endpoint` cru para o cliente MinIO
+(`internal/adapter/blobstore/minio.go:36`), que espera host puro:
+
+```
+NDOVU_S3_ENDPOINT=<acct>.s3.r2.cloudflarestorage.com     # correto
+NDOVU_S3_ENDPOINT=https://<acct>.s3.r2.cloudflarestorage.com   # quebra
+```
+
+Também sem barra final e sem o nome do bucket no path — o bucket vai em
+`NDOVU_SNAPSHOT_BUCKET`.
+
+### Credencial e escopo mínimo
+
+O adapter executa exatamente três operações S3: `BucketExists`
+(`minio.go:43`), `PutObject` (`minio.go:55`) e `GetObject` (`minio.go:68`). A
+policy da credencial cobre estas três e nada além:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket"],
+      "Resource": ["arn:aws:s3:::ndovu-snapshots"]
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject"],
+      "Resource": ["arn:aws:s3:::ndovu-snapshots/*"]
+    }
+  ]
+}
+```
+
+Não reutilize a credencial do cold tier do ClickHouse nem a dos backups — são
+quatro grupos separados no `.env.production` (`NDOVU_S3_*`,
+`NDOVU_CLICKHOUSE_S3_*`, `NDOVU_PG_BACKUP_S3_*`, `NDOVU_CH_BACKUP_S3_*`), um por
+bucket, conforme a seção anterior.
+
+### Retenção: configure no R2, não no código
+
+**Nenhum caminho no backend apaga snapshot.** Não há `DeleteObject`/
+`RemoveObject` em `blobstore` nem em lugar algum do `internal/`. O único
+deletor de objeto é o `DeleteObject` que a policy deliberadamente não concede.
+Isso significa que desligar replay **não** libera espaço: o objeto de um app
+desativado continua no bucket para sempre.
+
+A retenção, portanto, é uma **lifecycle rule no bucket**, sem código e sem
+deploy. Configure a expiração pelo dashboard do R2 ou por
+`put-lifecycle-configuration`. É o que torna o teto de body da rota de snapshot
+seguro: `NDOVU_SNAPSHOT_MAX_BODY_BYTES` tem default 24 MB
+(`internal/config/config.go:132`), porque a rota recebe a serialização
+JSON-escaped de um `outerHTML` — o teto de 1 MB da ingestão comum cortava
+qualquer tela com CSS embutido. Sem lifecycle, cada replay é crescimento
+líquido permanente no bucket.
+
+Isso também é contenção de PII, não só custo. O `captureDOM` do SDK mascara
+`<input>` de senha/e-mail e elementos marcados com `data-ndovu-mask`, e remove
+`<script>` — mas **não** redige texto plano genérico. Conteúdo marcado por nada
+vai para o bucket como está. Retenção explícita é a única coisa limitando o
+tempo que isso fica gravado.
+
+### Verificar depois de configurar
+
+```bash
+# 1. bucket existe e a credencial enxerga
+aws s3api head-bucket --bucket ndovu-snapshots \
+  --endpoint-url "https://<acct>.s3.r2.cloudflarestorage.com" --profile r2
+
+# 2. round-trip put/get/delete com a MESMA credencial da API
+#    (a policy nega DeleteObject — espere 403 aqui; é o resultado correto)
+echo teste | aws s3api put-object --bucket ndovu-snapshots --key _check/probe.txt \
+  --body /dev/stdin \
+  --endpoint-url "https://<acct>.s3.r2.cloudflarestorage.com" --profile r2
+
+# 3. o api subiu com storage ligado: sem S3 o processo nem fica de pé
+docker compose -f docker-compose.prod.yml logs api | tail -20
+```
+
+Depois, valide o caminho completo num app ativo. Dispare um erro real pela API
+pública do SDK — `ndovu.error('teste_snapshot', { code: 'PROBE', message: '...' })`
+é o que chega a gravar snapshot, porque a captura de tela só sai desse método — e
+confirme que a sessão abre o replay renderizado. Prefira uma tela com CSS
+embutido: snapshot pequeno **não** prova nada sobre o teto de body, e o caso que
+quebrou antes foi justamente o de tela grande.
+
+Referência da feature: `docs/features/ingest-snapshots.md`.
+
+### Falhas esperadas e o que significam
+
+| Sintoma | Causa |
+|---|---|
+| boot: `bucket ndovu-snapshots não existe — cria via minio-init` | Bucket não criado. `minio-init` não roda em produção. |
+| boot: `configuração de produção inválida: NDOVU_S3_ENDPOINT, ...` | Uma das cinco variáveis ausente. `NDOVU_S3_USE_SSL` vem do Compose, não do `.env`. |
+| `minio client:` ou endpoint inválido no boot | Scheme ou barra no `NDOVU_S3_ENDPOINT`, ou bucket no path. |
+| `putting snapshot ...: Access Denied` | Policy sem `s3:PutObject`, ou credencial de outro bucket. |
+| `verificando bucket ...: 404` | Nome do bucket ≠ `NDOVU_SNAPSHOT_BUCKET`, ou credencial sem `s3:ListBucket`. |
+| Boot com erro de assinatura/redirect | Região. O adapter não define `Region` explicitamente (`minio.go:36`) e depende de detecção; no R2 o esperado é `auto`. |
+| Replay sem estilo, só texto | Não é storage. O snapshot preserva os `<link href="/assets/...">` do HTML, e resolvidos contra a origem do dashboard eles dão 404. Falha conhecida do replay, sem correção no SDK. |
+| `snapshots: 0` em app que dispara `ndovu.error()` | Verifique `envelope.app` da chave vs. app dos eventos; a rota de gravação rejeita com 400 antes de tocar no storage. |
 
 ## Backup e restore do PostgreSQL
 
