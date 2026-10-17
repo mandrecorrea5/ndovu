@@ -165,7 +165,8 @@ Referência completa. Todas prefixadas com `NDOVU_`.
 |---|---|---|
 | `NDOVU_PORT` | `8080` | Porta HTTP da API |
 | `NDOVU_LOG_LEVEL` | `info` | debug \| info \| warn \| error |
-| `NDOVU_MAX_BODY_BYTES` | `1048576` | Limite de payload (1 MB) |
+| `NDOVU_MAX_BODY_BYTES` | `1048576` | Limite de payload (1 MB) — toda rota, exceto snapshot |
+| `NDOVU_SNAPSHOT_MAX_BODY_BYTES` | `25165824` | Teto só de `POST /v1/snapshots` (24 MB): DOM inteiro serializado em JSON. Precisa ficar acima de `NDOVU_MAX_BODY_BYTES`, senão o request morre no middleware antes do guard de 20 MB do caso de uso |
 
 ### 2.2. Bancos e dependências
 

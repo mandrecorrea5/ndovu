@@ -309,11 +309,21 @@ func recoverer(logger *slog.Logger) func(http.Handler) http.Handler {
 	}
 }
 
-// maxBody limita o tamanho do corpo aceito.
-func maxBody(limit int64) func(http.Handler) http.Handler {
+// maxBody limita o tamanho do corpo aceito. `limit` vale para todas as rotas;
+// `overrides` casa por caminho EXATO e substitui o teto daquele caminho — é
+// como /v1/snapshots escapa do limite de 1 MB da ingestão sem dar 413 no resto.
+// Precisa ser um middleware só: http.MaxBytesReader não elevado por dentro,
+// então aninhar um segundo maxBody continuaria preso ao teto do primeiro.
+func maxBody(limit int64, overrides map[string]int64) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			r.Body = http.MaxBytesReader(w, r.Body, limit)
+			allowed := limit
+			// 0 significa "não configurado" (Config montado à mão em teste, por
+			// exemplo) — nunca um teto literal, senão a rota ficaria inutilizável.
+			if override, ok := overrides[r.URL.Path]; ok && override > 0 {
+				allowed = override
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, allowed)
 			next.ServeHTTP(w, r)
 		})
 	}

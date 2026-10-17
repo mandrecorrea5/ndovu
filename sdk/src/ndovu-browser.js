@@ -687,13 +687,28 @@ async function sendSnapshot(endpoint, apiKey, app, sessionId, eventId) {
       viewportH: window.innerHeight,
       takenAt: new Date().toISOString(),
     });
-    await fetch(`${endpoint.replace(/\/$/, '')}/v1/snapshots`, {
+    const res = await fetch(`${endpoint.replace(/\/$/, '')}/v1/snapshots`, {
       method: 'POST',
       keepalive: true,
       headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
       body,
     });
+    // Snapshot é best-effort, mas nunca silencioso: um 4xx aqui é o único
+    // sinal de que o replay daquela tela não existe. console.warn e não
+    // console.error de propósito — este SDK intercepta console.error e o
+    // trata como erro, o que chamaria sendSnapshot() de novo (recursão).
+    if (!res.ok) {
+      warn(`ndovu: snapshot descartado (HTTP ${res.status})`, { eventId, url: location.href });
+    }
+  } catch (err) {
+    warn('ndovu: falha ao enviar snapshot', { eventId, error: String(err) });
+  }
+}
+
+function warn(message, data) {
+  try {
+    console.warn(message, data);
   } catch {
-    // Snapshot é best-effort; erro aqui não deve afetar o app.
+    // console indisponível — snapshot continua sendo best-effort
   }
 }

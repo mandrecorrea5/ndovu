@@ -2,12 +2,49 @@ package httpapi
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/marcoscorrea/ndovu/backend/internal/domain"
 )
+
+// TestMaxBody_OverridePorRota fixa a decisão do snapshot: o teto de 1 MB da
+// ingestão não pode valer para /v1/snapshots, que transporta um document
+// inteiro — e um override 0 significa "não configurado", nunca teto literal.
+func TestMaxBody_OverridePorRota(t *testing.T) {
+	mw := maxBody(8, map[string]int64{"/v1/snapshots": 64, "/v1/zero": 0})
+
+	serve := func(path, body string) int {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+		mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if _, err := io.ReadAll(r.Body); err != nil {
+				w.WriteHeader(http.StatusRequestEntityTooLarge)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+		})).ServeHTTP(rr, req)
+		return rr.Code
+	}
+
+	cases := []struct {
+		name, path, body string
+		want             int
+	}{
+		{"no teto padrão", "/v1/events", "12345678", http.StatusOK},
+		{"acima do teto padrão", "/v1/events", "123456789", http.StatusRequestEntityTooLarge},
+		{"override libera além do padrão", "/v1/snapshots", "123456789", http.StatusOK},
+		{"override zerado herda o padrão", "/v1/zero", "123456789", http.StatusRequestEntityTooLarge},
+	}
+	for _, c := range cases {
+		if got := serve(c.path, c.body); got != c.want {
+			t.Errorf("%s: status = %d, quero %d", c.name, got, c.want)
+		}
+	}
+}
 
 // injectIdentity monta um handler que passa uma identidade fake pelo context,
 // como se o bearerAuth tivesse validado o token. Usado para testar os

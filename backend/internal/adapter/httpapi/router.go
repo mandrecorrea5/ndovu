@@ -24,7 +24,9 @@ func NewRouter(h *Handlers, cfg config.Config, verifier domain.TokenVerifier, ke
 	r.Use(recoverer(logger))
 	r.Use(requestLogger(logger, metrics))
 	r.Use(cors(cfg.CORSOrigins))
-	r.Use(maxBody(cfg.MaxBodyBytes))
+	r.Use(maxBody(cfg.MaxBodyBytes, map[string]int64{
+		"/v1/snapshots": cfg.SnapshotBodyBytes,
+	}))
 
 	r.Get("/health", h.Health)
 	r.Get("/metrics", func(w http.ResponseWriter, _ *http.Request) {

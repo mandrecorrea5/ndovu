@@ -74,6 +74,30 @@ function safeJson(text: string): unknown {
   }
 }
 
+/**
+ * upstreamRaw repassa a resposta crua da API. Use nos poucos endpoints que
+ * devolvem TEXTO (hoje só o HTML do session snapshot) — `upstream` é impróprio
+ * aqui: ele passa tudo por `safeJson`, e um HTML cai no `catch` e volta como
+ * string. Re-serializar essa string em `proxyResponse` escapa o conteúdo, e o
+ * iframe do replay recebe `"<!doctype html>\n..."` em vez da página.
+ *
+ * Não decide status: devolve a Response como veio para a rota decidir.
+ */
+export async function upstreamRaw(
+  path: string,
+  opts: { token: string; query?: URLSearchParams },
+): Promise<Response> {
+  const url = new URL(path, API_BASE);
+  if (opts.query) {
+    for (const [k, v] of opts.query.entries()) url.searchParams.set(k, v);
+  }
+  return fetch(url.toString(), {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${opts.token}` },
+    cache: 'no-store',
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Sessão (cookie httpOnly cifrado)
 // ---------------------------------------------------------------------------

@@ -12,12 +12,13 @@ import (
 
 // Config é a configuração completa da API e do writer.
 type Config struct {
-	Environment     string
-	Port            int
-	CORSOrigins     string // "*" ou lista separada por vírgula
-	MaxBodyBytes    int64
-	ShutdownTimeout time.Duration
-	LogLevel        string
+	Environment       string
+	Port              int
+	CORSOrigins       string // "*" ou lista separada por vírgula
+	MaxBodyBytes      int64
+	SnapshotBodyBytes int64 // teto próprio de POST /v1/snapshots (DOM inteiro)
+	ShutdownTimeout   time.Duration
+	LogLevel          string
 
 	// Control plane (Postgres): usuários do backoffice e chaves de API
 	PostgresURL        string
@@ -119,12 +120,18 @@ func LoadFor(component string) (Config, error) {
 		bootstrapIngestKey = ""
 	}
 	cfg := Config{
-		Environment:     environment,
-		Port:            envInt("NDOVU_PORT", 8080),
-		CORSOrigins:     envStr("NDOVU_CORS_ORIGINS", "*"),
-		MaxBodyBytes:    int64(envInt("NDOVU_MAX_BODY_BYTES", 1<<20)), // 1 MB
-		ShutdownTimeout: 15 * time.Second,
-		LogLevel:        envStr("NDOVU_LOG_LEVEL", "info"),
+		Environment:  environment,
+		Port:         envInt("NDOVU_PORT", 8080),
+		CORSOrigins:  envStr("NDOVU_CORS_ORIGINS", "*"),
+		MaxBodyBytes: int64(envInt("NDOVU_MAX_BODY_BYTES", 1<<20)), // 1 MB
+		// Snapshot é o outerHTML do document inteiro — estoura o teto de 1 MB
+		// da ingestão com facilidade. O caso de uso aceita até 20 MB de HTML
+		// (usecase.SnapshotService.Save); o corpo HTTP é esse HTML escapado
+		// dentro de JSON, daí os 24 MB. Sem este teto próprio o request morre
+		// no middleware e vira um 400 "JSON inválido" sem relação com a causa.
+		SnapshotBodyBytes: int64(envInt("NDOVU_SNAPSHOT_MAX_BODY_BYTES", 24<<20)),
+		ShutdownTimeout:   15 * time.Second,
+		LogLevel:          envStr("NDOVU_LOG_LEVEL", "info"),
 
 		ClickHouseAddr:     envStr("NDOVU_CLICKHOUSE_ADDR", "localhost:9000"),
 		ClickHouseDB:       envStr("NDOVU_CLICKHOUSE_DB", "ndovu"),
