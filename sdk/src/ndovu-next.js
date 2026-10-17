@@ -5,11 +5,12 @@
  * useSearchParams() e dispara `ndovu.pageView()` automaticamente — sem
  * tocar código nas telas.
  *
- * Uso (em app/layout.tsx):
+ * Uso (em app/layout.tsx), com os arquivos copiados para o projeto — ver
+ * docs/INTEGRATION.md, "Opção A":
  *
  *   'use client';
- *   import { NdovuAutoRouter, NdovuProvider } from '@your-org/ndovu-next';
- *   import { createNdovu } from '@your-org/ndovu-browser';
+ *   import { NdovuAutoRouter, NdovuProvider } from './ndovu-next.js';
+ *   import { createNdovu } from './ndovu-browser.js';
  *
  *   const ndovu = createNdovu({ ... });
  *

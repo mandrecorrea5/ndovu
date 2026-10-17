@@ -12,7 +12,7 @@
  *   import 'react-native-get-random-values';
  *   import AsyncStorage from '@react-native-async-storage/async-storage';
  *   import { AppState, Platform } from 'react-native';
- *   import { createNdovu } from '@your-org/ndovu-react-native';
+ *   import { createNdovu } from './ndovu-react-native.js';
  *
  *   export const ndovu = await createNdovu({
  *     endpoint: 'https://ndovu.acme.com',
