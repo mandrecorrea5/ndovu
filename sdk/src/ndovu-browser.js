@@ -20,9 +20,16 @@
  *   ndovu.instrumentFetch(); // captura fetch() automaticamente
  */
 
-const SDK_VERSION = '1.2.0';
+const SDK_VERSION = '1.3.0';
 const REDACT_KEYS = /pass(word)?|senha|token|secret|authorization|cvv|card|cart[aã]o/i;
 const BREADCRUMB_LIMIT = 30;
+// 401/403/400/413 são erro de configuração ou de contrato: reenviar não
+// conserta. 5xx e 429 são transitórios e voltam para a fila.
+const NON_RETRYABLE = [400, 401, 403, 404, 413];
+// Teto da fila de reenvio. Sem ele, uma API fora do ar faz a fila crescer a
+// cada flushIntervalMs até derrubar a aba — o SDK não pode ser a causa de um
+// outage no app que instrumenta.
+const QUEUE_LIMIT = 400;
 
 function uuid() {
   return crypto.randomUUID
@@ -109,31 +116,49 @@ export function createNdovu({
     };
   }
 
+  // Reenvio com teto: eventId é determinístico, então o servidor deduplica o
+  // que for reenviado. O que passa do teto sai mais antigo — o mais recente é
+  // o que interessa para as telas que o usuário ainda está vendo.
+  function requeue(events) {
+    queue = events.concat(queue);
+    if (queue.length > QUEUE_LIMIT) {
+      const dropped = queue.splice(0, queue.length - QUEUE_LIMIT).length;
+      warnOnce(`ndovu: fila excedeu ${QUEUE_LIMIT} eventos — ${dropped} descartados`, {
+        queueLimit: QUEUE_LIMIT,
+      });
+    }
+  }
+
   async function flush(useBeacon = false) {
     if (queue.length === 0) return;
     const events = queue.splice(0, queue.length);
     const body = JSON.stringify(envelope(events));
     const url = `${endpoint.replace(/\/$/, '')}/v1/events`;
     try {
-      if (useBeacon && navigator.sendBeacon) {
-        // sendBeacon não envia headers custom; em produção use um endpoint
-        // com chave na query ou aceite o POST normal com keepalive:
-        await fetch(url, {
-          method: 'POST',
-          keepalive: true,
-          headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
-          body,
+      // sendBeacon não envia headers custom; em produção use um endpoint
+      // com chave na query ou aceite o POST normal com keepalive.
+      const res = await fetch(url, {
+        method: 'POST',
+        keepalive: useBeacon,
+        headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
+        body,
+      });
+      if (res.ok) return;
+      if (NON_RETRYABLE.includes(res.status)) {
+        // Descartar é duro, mas reenviar para sempre enche a memória da aba e
+        // continua sendo recusado da mesma forma.
+        warnOnce(`ndovu: ${events.length} eventos recusados (HTTP ${res.status})`, {
+          hint: 'X-Api-Key ausente, inválida ou revogada — ou envelope.app ≠ app da chave',
         });
-      } else {
-        await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
-          body,
-        });
+        return;
       }
+      requeue(events);
+      warnOnce(`ndovu: ingestão indisponível (HTTP ${res.status}) — eventos retidos`, {
+        queued: events.length,
+      });
     } catch {
       // Falha de rede: devolve para a fila (eventId garante idempotência no reenvio)
-      queue = events.concat(queue);
+      requeue(events);
     }
   }
 
@@ -709,6 +734,15 @@ function warn(message, data) {
   try {
     console.warn(message, data);
   } catch {
-    // console indisponível — snapshot continua sendo best-effort
+    // console indisponível — melhor esforço não pode quebrar o app.
   }
+}
+
+// Cada aviso sai uma vez por página. Sem isto, uma chave revogada produz um
+// console.warn a cada flushIntervalMs para o resto da vida da aba.
+const warned = new Set();
+function warnOnce(message, data) {
+  if (warned.has(message)) return;
+  warned.add(message);
+  warn(message, data);
 }

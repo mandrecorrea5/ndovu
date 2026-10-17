@@ -318,7 +318,7 @@ como "outra app". Se você tem 5 apps, precisa de 5 chaves.
 
 ## 4. SDK Browser (JavaScript)
 
-Arquivo: `sdk/ndovu-browser.js` (v1.2.0, ~700 linhas, **zero
+Arquivo: `sdk/ndovu-browser.js` (v1.3.0, ~700 linhas, **zero
 dependências**).
 
 ### 4.1. Criar instância
@@ -1731,7 +1731,7 @@ ndovu/
 │       ├── components/         # UI
 │       └── lib/                # api.ts, auth.ts, types.ts, time.ts
 ├── sdk/
-│   ├── ndovu-browser.js        # v1.2.0
+│   ├── ndovu-browser.js        # v1.3.0
 │   ├── ndovu-next.js
 │   ├── ndovu-node.js           # v1.1.0
 │   └── ndovu-react-native.js

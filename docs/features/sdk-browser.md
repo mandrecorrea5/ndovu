@@ -13,7 +13,7 @@ JSON e você está integrado.
 
 ## Onde fica
 
-- Fonte: `sdk/ndovu-browser.js` (SDK_VERSION `1.2.0`).
+- Fonte: `sdk/ndovu-browser.js` (SDK_VERSION `1.3.0`).
 - Endpoint destino: `POST /v1/events`, `POST /v1/snapshots`,
   `POST /v1/feedbacks` (todos com `X-Api-Key`).
 - Contrato do envelope: `docs/CONTRACT.md` §1.2 e §1.3.

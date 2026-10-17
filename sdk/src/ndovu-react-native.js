@@ -28,10 +28,29 @@
  *   ndovu.action('clicou_pagar', { feature: 'checkout' });
  */
 
-const SDK_VERSION = '1.0.0-rn';
+const SDK_VERSION = '1.1.0-rn';
 const REDACT_KEYS = /pass(word)?|senha|token|secret|authorization|cvv|card|cart[aã]o/i;
 const BREADCRUMB_LIMIT = 30;
 const SESSION_KEY = 'ndovu.sessionId';
+// 401/403/400/413 são erro de configuração ou de contrato: reenviar não
+// conserta. 5xx e 429 são transitórios e voltam para a fila.
+const NON_RETRYABLE = [400, 401, 403, 404, 413];
+// Teto da fila. Numa app mobile com rede ruim a fila sobrevive por horas em
+// background — sem teto é a app que morre, não o SDK.
+const QUEUE_LIMIT = 400;
+
+// Cada aviso sai uma vez por processo de JS. Sem isto, uma chave revogada
+// produz um console.warn a cada flushIntervalMs.
+const warned = new Set();
+function warnOnce(message, data) {
+  if (warned.has(message)) return;
+  warned.add(message);
+  try {
+    console.warn(message, data);
+  } catch {
+    // console indisponível — melhor esforço não pode quebrar o app.
+  }
+}
 
 function uuid() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
@@ -106,7 +125,7 @@ export async function createNdovu({
     sessionId = uuid();
   }
 
-  const queue = [];
+  let queue = [];
   const crumbs = [];
   let timer = null;
 
@@ -128,20 +147,43 @@ export async function createNdovu({
     };
   }
 
+  // Reenvio com teto: eventId é determinístico, o servidor deduplica o que
+  // voltar. O que passa do teto sai mais antigo.
+  function requeue(events) {
+    queue = events.concat(queue);
+    if (queue.length > QUEUE_LIMIT) {
+      const dropped = queue.splice(0, queue.length - QUEUE_LIMIT).length;
+      warnOnce(`ndovu: fila excedeu ${QUEUE_LIMIT} eventos — ${dropped} descartados`, {
+        queueLimit: QUEUE_LIMIT,
+      });
+    }
+  }
+
   async function flush() {
     if (queue.length === 0) return;
     const events = queue.splice(0, queue.length);
     const body = JSON.stringify(envelope(events));
     const url = `${endpoint.replace(/\/$/, '')}/v1/events`;
     try {
-      await fetch(url, {
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
         body,
       });
+      if (res.ok) return;
+      if (NON_RETRYABLE.includes(res.status)) {
+        warnOnce(`ndovu: ${events.length} eventos recusados (HTTP ${res.status})`, {
+          hint: 'X-Api-Key ausente, inválida ou revogada — ou envelope.app ≠ app da chave',
+        });
+        return;
+      }
+      requeue(events);
+      warnOnce(`ndovu: ingestão indisponível (HTTP ${res.status}) — eventos retidos`, {
+        queued: events.length,
+      });
     } catch {
       // Falha de rede: devolve à fila — eventId garante idempotência no reenvio.
-      queue.unshift(...events);
+      requeue(events);
     }
   }
 

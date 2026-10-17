@@ -1180,7 +1180,7 @@ Não há teste formal de DR periódico — item de roadmap.
 
 O contrato v1 é a fronteira. Qualquer cliente que envie POST /v1/events
 com o JSON esperado está integrado. SDKs oficiais são conveniência:
-- `ndovu-browser.js` (v1.2.0)
+- `ndovu-browser.js` (v1.3.0)
 - `ndovu-node.js` (v1.1.0)
 - `ndovu-next.js` (auto-instrumentação Next.js)
 - `ndovu-react-native.js`
