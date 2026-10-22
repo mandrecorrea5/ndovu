@@ -153,6 +153,17 @@ function TimelineItem({ event, isLast }: { event: TraceEvent; isLast: boolean })
                 <span className="text-muted">tela: </span>
                 {event.screen ?? '—'}
               </p>
+              {event.trace?.traceId ? (
+                <p className="mono truncate">
+                  <span className="text-muted">trace: </span>
+                  <Link
+                    href={`/traces/${encodeURIComponent(event.trace.traceId)}`}
+                    className="text-accent hover:underline"
+                  >
+                    {event.trace.traceId}
+                  </Link>
+                </p>
+              ) : null}
               {event.feature ? (
                 <p>
                   <span className="text-muted">funcionalidade: </span>

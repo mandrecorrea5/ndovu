@@ -14,6 +14,7 @@ type FormState = {
   name: string;
   technology: string;
   allowedOrigins: string;
+  allowOtlp: boolean;
   companyId: string;
   company: string;
   responsible: string;
@@ -22,6 +23,7 @@ const EMPTY: FormState = {
   name: '',
   technology: '',
   allowedOrigins: '',
+  allowOtlp: false,
   companyId: '',
   company: '',
   responsible: '',
@@ -55,6 +57,7 @@ export default function AdminAppsPage() {
       name: a.name,
       technology: a.technology ?? '',
       allowedOrigins: (a.allowedOrigins ?? []).join('\n'),
+      allowOtlp: a.allowOtlp ?? false,
       companyId: a.companyId ?? '',
       company: a.company ?? '',
       responsible: a.responsible ?? '',
@@ -72,6 +75,7 @@ export default function AdminAppsPage() {
           .split('\n')
           .map((origin) => origin.trim())
           .filter(Boolean),
+        allowOtlp: form.allowOtlp,
         companyId: form.companyId || undefined,
         company: form.companyId ? undefined : form.company,
         responsible: form.responsible,
@@ -167,6 +171,11 @@ export default function AdminAppsPage() {
                   <td className="px-3 py-2 text-xs text-ink-2">{a.technology || '—'}</td>
                   <td className="max-w-56 px-3 py-2 text-xs text-ink-2">
                     {a.allowedOrigins?.length ? a.allowedOrigins.join(', ') : '—'}
+                    {a.allowOtlp ? (
+                      <span className="ml-1 rounded bg-accent/10 px-1 text-[10px] font-medium uppercase text-accent">
+                        otlp
+                      </span>
+                    ) : null}
                   </td>
                   <td className="px-3 py-2 text-xs text-ink-2">{a.company || '—'}</td>
                   <td className="px-3 py-2 text-xs text-ink-2">{a.responsible || '—'}</td>
@@ -250,6 +259,24 @@ export default function AdminAppsPage() {
               Uma origem por linha, incluindo https:// e sem caminho. Ex.: https://www.exemplo.com.
               Deixe vazio para usar a lista global antiga do CORS.
             </p>
+          </Field>
+          <Field label="App de servidor (OpenTelemetry)" htmlFor="app-otlp">
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                id="app-otlp"
+                type="checkbox"
+                className="mt-1"
+                checked={form.allowOtlp}
+                onChange={(e) => setForm({ ...form, allowOtlp: e.target.checked })}
+              />
+              <span>
+                A chave deste app aceita spans OTLP
+                <span className="mt-1 block text-xs text-ink-2">
+                  Ligue só em app de backend. A chave de um app de browser fica exposta no bundle do
+                  site, e aceitar OTLP com ela deixaria qualquer um gravar spans em nome do app.
+                </span>
+              </span>
+            </label>
           </Field>
           <Field label="Empresa" htmlFor="app-company">
             <Select

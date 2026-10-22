@@ -8,7 +8,7 @@ import { ErrorState, LoadingState } from '@/components/ui';
 import { api, ApiError, type SamplingRule } from '@/lib/api';
 import { fmtDateTime } from '@/lib/time';
 
-const EVENT_TYPES = ['', 'page_view', 'action', 'http_request', 'error', 'custom'];
+const EVENT_TYPES = ['', 'page_view', 'action', 'http_request', 'error', 'custom', 'span'];
 
 type FormState = {
   app: string;
@@ -205,14 +205,14 @@ export default function SamplingPage() {
                 ))}
               </Select>
             </Field>
-            <Field label="Tipo (vazio = todos)">
+            <Field label='Tipo (vazio = todos os eventos; spans só com "span")'>
               <Select
                 value={form.eventType}
                 onChange={(e) => setForm({ ...form, eventType: e.target.value })}
               >
                 {EVENT_TYPES.map((t) => (
                   <option key={t} value={t}>
-                    {t || '— todos —'}
+                    {t === 'span' ? 'span (OTLP, amostra por trace)' : t || '— todos os eventos —'}
                   </option>
                 ))}
               </Select>

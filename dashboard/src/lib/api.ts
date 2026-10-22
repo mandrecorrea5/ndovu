@@ -27,6 +27,7 @@ import type {
   SnapshotMeta,
   StackFrame,
   TraceEvent,
+  TraceView,
   UserAppPermission,
   UserFeedback,
   WebVitalStat,
@@ -177,6 +178,7 @@ export const api = {
   sessions: (q: Record<string, string | undefined>) =>
     request<SessionPage>('GET', '/v1/sessions', { params: q }),
   session: (id: string) => request<SessionDetail>('GET', `/v1/sessions/${encodeURIComponent(id)}`),
+  trace: (id: string) => request<TraceView>('GET', `/v1/traces/${encodeURIComponent(id)}`),
   overview: (q: Record<string, string | undefined>) =>
     request<Overview>('GET', '/v1/stats/overview', { params: q }),
   filterOptions: () => request<FilterOptions>('GET', '/v1/meta/filters'),
@@ -435,6 +437,7 @@ export const api = {
     name: string;
     technology?: string;
     allowedOrigins?: string[];
+    allowOtlp?: boolean;
     company?: string;
     companyId?: string;
     responsible?: string;
@@ -445,6 +448,7 @@ export const api = {
       name?: string;
       technology?: string;
       allowedOrigins?: string[];
+      allowOtlp?: boolean;
       company?: string;
       companyId?: string;
       responsible?: string;

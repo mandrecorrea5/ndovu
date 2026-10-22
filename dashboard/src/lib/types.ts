@@ -16,6 +16,13 @@ export interface ErrorInfo {
   body?: unknown;
 }
 
+/** Contexto W3C do evento — liga o evento do SDK aos spans OTLP do backend. */
+export interface TraceContext {
+  traceId?: string;
+  spanId?: string;
+  parentSpanId?: string;
+}
+
 export interface TraceEvent {
   eventId: string;
   sessionId: string;
@@ -29,8 +36,39 @@ export interface TraceEvent {
   error?: ErrorInfo;
   durationMs?: number;
   metadata?: Record<string, unknown>;
+  trace?: TraceContext;
   timestamp: string;
   receivedAt?: string;
+}
+
+export type SpanKind = 'internal' | 'server' | 'client' | 'producer' | 'consumer' | 'unspecified';
+
+/** Span OpenTelemetry recebido por OTLP (atributos achatados em string). */
+export interface Span {
+  app: string;
+  traceId: string;
+  spanId: string;
+  parentSpanId?: string;
+  name: string;
+  kind: SpanKind;
+  serviceName: string;
+  scopeName?: string;
+  startTime: string;
+  durationNs: number;
+  statusCode: 'unset' | 'ok' | 'error';
+  statusMessage?: string;
+  resourceAttributes?: Record<string, string>;
+  attributes?: Record<string, string>;
+  events?: { time: string; name: string; attributes?: Record<string, string> }[];
+  links?: { traceId: string; spanId: string }[];
+  receivedAt: string;
+}
+
+/** GET /v1/traces/{traceId}: os dois lados do mesmo trace. */
+export interface TraceView {
+  traceId: string;
+  events: TraceEvent[];
+  spans: Span[];
 }
 
 export interface Session {
@@ -309,6 +347,8 @@ export interface App {
   name: string;
   technology?: string;
   allowedOrigins: string[];
+  /** App de servidor: a chave aceita spans OTLP. */
+  allowOtlp: boolean;
   companyId?: string;
   company?: string;
   responsible?: string;
