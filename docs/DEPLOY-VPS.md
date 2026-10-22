@@ -26,6 +26,8 @@ de desenvolvimento.
 | `NDOVU_CORS_ORIGINS` | Lista global legada de origens HTTPS para integrações sem origens cadastradas no app; não use `*`. Para novos sites, cadastre as origens em **Apps** — não é necessário alterar esta variável a cada cliente. O dashboard é same-origin com o BFF e não precisa constar. |
 | `NEXT_PUBLIC_NDOVU_API` | Mantida apenas por compatibilidade de build. O dashboard é **same-origin**: a UI chama `/api/*` do próprio Next (BFF), e o BFF chama a API via rede interna (`NDOVU_API=http://api:8080`, já fixo no Compose de produção). O token não transita mais pelo browser. |
 | `NDOVU_APP_DOMAIN`, `NDOVU_API_DOMAIN` | Hostnames públicos do dashboard e da API, cadastrados no Cloudflare Tunnel e roteados pelo Caddy. |
+| `NDOVU_OTLP_DOMAIN` | Opcional. Hostname público do receptor OTLP (ex.: `otlp.ndovu.solutions`), para backends que exportam OpenTelemetry. Sem ela, o bloco do Caddy fica inerte (`otlp.invalid`). Mudar o valor exige recriar o container do Caddy (`up -d caddy`); `caddy reload` não lê variáveis novas. |
+| `NDOVU_SPAN_QUOTA_ALERT_TO` | Opcional. Destinatário do e-mail de cota diária de spans estourada; o padrão são os destinatários do digest. |
 | `NDOVU_CLOUDFLARED_TUNNEL_TOKEN` | Token secreto do Tunnel criado no Cloudflare Zero Trust. Guarde no `.env.production` (ou nas variáveis protegidas da stack no Portainer), nunca no Git. |
 | `NDOVU_S3_ENDPOINT`, `NDOVU_S3_ACCESS_KEY`, `NDOVU_S3_SECRET_KEY`, `NDOVU_SNAPSHOT_BUCKET` | Credenciais e bucket privados de snapshots. `NDOVU_S3_USE_SSL` é forçado a `true` no perfil de produção. Provisionamento — criação do bucket, policy, retenção: seção "Bucket de snapshots no R2". |
 | `NDOVU_CLICKHOUSE_S3_ENDPOINT`, `NDOVU_CLICKHOUSE_S3_ACCESS_KEY`, `NDOVU_CLICKHOUSE_S3_SECRET_KEY` | Credenciais próprias do cold tier do ClickHouse. Use um bucket R2 separado, como `ndovu-cold`; o endpoint deve terminar com `/ndovu-cold/`. |
@@ -64,16 +66,26 @@ dos serviços Ndovu. Não é necessário abrir portas de entrada 80/443 nem
    token. Configure `NDOVU_CLOUDFLARED_TUNNEL_TOKEN` no `.env.production` da
    VPS, com permissões `600`, ou nas variáveis protegidas da stack no Portainer.
    Não cole o token em arquivos versionados nem o compartilhe em logs.
-2. Nas rotas públicas do Tunnel, cadastre os dois hostnames com serviço de
-   origem HTTP na rede Docker:
+2. Nas rotas públicas do Tunnel (**Public Hostname** / **Published
+   application routes**), cadastre os hostnames com serviço de origem HTTP na
+   rede Docker:
    - `NDOVU_APP_DOMAIN` → `http://caddy:80`;
-   - `NDOVU_API_DOMAIN` → `http://caddy:80`.
+   - `NDOVU_API_DOMAIN` → `http://caddy:80`;
+   - `NDOVU_OTLP_DOMAIN` → `http://caddy:80` (opcional, só se for receber
+     OTLP). Também aponta para o Caddy, nunca para `api:4318`: o
+     `cloudflared` só enxerga o Caddy pela rede `tunnel`, e é o Caddy que
+     encaminha para o listener OTLP.
 3. Em **Additional application settings**, deixe **HTTP** em **Using defaults**
    e não configure opções de TLS de origem. O Host HTTP original deve ser
    preservado para o Caddy escolher a rota correta.
 4. Deixe a Cloudflare criar/gerenciar os registros DNS do Tunnel. O domínio
    deve estar ativo na zona Cloudflare; não crie registros A apontando para a
    VPS para estes hostnames.
+5. O hostname OTLP recebe tráfego só de servidores (exporters
+   OpenTelemetry), nunca de browser. Se a zona tiver **Bot Fight Mode** ou
+   regras de WAF com *challenge*, crie uma exceção (**Security → WAF → Custom
+   rules → Skip**) para `NDOVU_OTLP_DOMAIN`; senão o exporter recebe 403 ou
+   uma página HTML da Cloudflare em vez da resposta do Ndovu.
 
 O TLS público termina na Cloudflare. Entre `cloudflared` e Caddy, o tráfego
 usa HTTP dentro da rede Docker privada da stack, sem publicar a porta 80 no
@@ -81,7 +93,7 @@ host. O Caddy continua encaminhando `/api/*` ao backend e o restante do
 hostname do app ao dashboard. A rede Docker do Tunnel não dá ao `cloudflared`
 acesso direto aos bancos nem aos demais serviços.
 
-Valide e suba a stack após configurar o token e as duas rotas:
+Valide e suba a stack após configurar o token e as rotas:
 
 ```bash
 docker compose --env-file .env.production \
@@ -92,6 +104,20 @@ docker compose --env-file .env.production \
   -f docker-compose.yml -f docker-compose.prod.yml logs --tail=100 cloudflared caddy
 curl -sSf https://NDOVU_API_DOMAIN/health
 ```
+
+Com o hostname OTLP configurado, confira também:
+
+```bash
+curl -sSf https://NDOVU_OTLP_DOMAIN/health          # 200
+curl -si -X POST https://NDOVU_OTLP_DOMAIN/v1/traces \
+  -H 'Content-Type: application/json' -d '{}'        # 401: resposta do Ndovu, rota ok
+```
+
+Um 404 vazio indica que o Caddy não recebeu `NDOVU_OTLP_DOMAIN` (recrie o
+container). Um 502 ou erro 1033 indica destino errado no Tunnel ou
+`cloudflared` parado. Uma página HTML de challenge indica bloqueio de bot/WAF
+(item 5). O cadastro do app com **aceita OTLP** e a configuração do exporter
+estão em `docs/INTEGRATION.md` §14.
 
 As portas de entrada e regras de firewall de outros serviços da VPS não devem
 ser alteradas como parte desta configuração. Para o Tunnel funcionar, o
