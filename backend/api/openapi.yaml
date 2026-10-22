@@ -434,7 +434,7 @@ paths:
                     items: { $ref: "#/components/schemas/Span" }
   /v1/traces:
     servers:
-      - url: https://otlp.ndovy.solutions
+      - url: https://otlp.ndovu.solutions
         description: Receptor OTLP (listener próprio, NDOVU_OTLP_PORT — 4318 local)
     post:
       tags: [ingestao]
@@ -442,7 +442,7 @@ paths:
       description: |
         ExportTraceServiceRequest do OpenTelemetry, em protobuf ou JSON, com
         gzip opcional. Configuração no cliente, sem SDK do Ndovu:
-        OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.ndovy.solutions e
+        OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.ndovu.solutions e
         OTEL_EXPORTER_OTLP_HEADERS=x-api-key=ndk_... . Só aceita chave de app
         marcado com allowOtlp. Spans recusados (sem ids, start fora da
         retenção) vêm em partial_success; 429/503 trazem Retry-After.

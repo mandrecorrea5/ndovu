@@ -48,7 +48,7 @@ W3C dos eventos *do nosso contrato*, não ingestão de spans.
 Configuração no cliente, sem código nosso:
 
 ```
-OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.ndovy.solutions
+OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.ndovu.solutions
 OTEL_EXPORTER_OTLP_HEADERS=x-api-key=ndk_...
 OTEL_SERVICE_NAME=felpma-api
 ```
@@ -235,8 +235,8 @@ SDK (span B1) → `GET /v1/sessions/{sessionId}` (pai = B1) → dois
 
 **Pendente para ligar em produção** (fora do código, manual):
 
-- Public hostname `otlp.ndovy.solutions` no Cloudflare Tunnel apontando para
-  o `caddy`, e `NDOVU_OTLP_DOMAIN=otlp.ndovy.solutions` no `.env` da VPS (sem
+- Public hostname `otlp.ndovu.solutions` no Cloudflare Tunnel apontando para
+  o `caddy`, e `NDOVU_OTLP_DOMAIN=otlp.ndovu.solutions` no `.env` da VPS (sem
   isso o bloco do Caddy fica inerte em `otlp.invalid`).
 - `NDOVU_SPAN_QUOTA_ALERT_TO` (default: destinatários do digest) para o
   e-mail de cota ter para quem ir.

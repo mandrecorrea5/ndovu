@@ -988,7 +988,7 @@ Nunca ligue isso no app do browser: a chave dele é pública.
 Java, Python, .NET):
 
 ```
-OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.ndovy.solutions
+OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.ndovu.solutions
 OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 OTEL_EXPORTER_OTLP_HEADERS=x-api-key=ndk_...     # chave do app de servidor
 OTEL_SERVICE_NAME=felpma-api
