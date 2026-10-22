@@ -329,6 +329,7 @@ type createAppRequest struct {
 	Name           string   `json:"name"`
 	Technology     string   `json:"technology"`
 	AllowedOrigins []string `json:"allowedOrigins"`
+	AllowOTLP      bool     `json:"allowOtlp"`
 	Company        string   `json:"company"`
 	CompanyID      string   `json:"companyId"`
 	Responsible    string   `json:"responsible"`
@@ -338,6 +339,7 @@ type updateAppRequest struct {
 	Name           *string   `json:"name"`
 	Technology     *string   `json:"technology"`
 	AllowedOrigins *[]string `json:"allowedOrigins"`
+	AllowOTLP      *bool     `json:"allowOtlp"`
 	Company        *string   `json:"company"`
 	CompanyID      *string   `json:"companyId"`
 	Responsible    *string   `json:"responsible"`
@@ -391,6 +393,7 @@ func (h *Handlers) PostApps(w http.ResponseWriter, r *http.Request) {
 		Name:           req.Name,
 		Technology:     req.Technology,
 		AllowedOrigins: req.AllowedOrigins,
+		AllowOTLP:      req.AllowOTLP,
 		Company:        req.Company,
 		CompanyID:      req.CompanyID,
 		Responsible:    req.Responsible,
@@ -432,6 +435,7 @@ func (h *Handlers) PatchApp(w http.ResponseWriter, r *http.Request) {
 		Name:           req.Name,
 		Technology:     req.Technology,
 		AllowedOrigins: req.AllowedOrigins,
+		AllowOTLP:      req.AllowOTLP,
 		Company:        req.Company,
 		CompanyID:      req.CompanyID,
 		Responsible:    req.Responsible,

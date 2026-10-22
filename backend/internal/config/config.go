@@ -99,6 +99,17 @@ type Config struct {
 	DigestMinuteUTC  int
 	DigestTickEvery  time.Duration
 
+	// Receptor OTLP (docs/AVALIACAO-OTLP.md). Listener próprio, servido no
+	// host otlp.<domínio>; porta 0 desliga.
+	OTLPPort           int
+	OTLPMaxBodyBytes   int64          // corpo como chega (comprimido)
+	OTLPMaxDecodedSize int64          // corpo depois do gunzip (anti gzip bomb)
+	SpanRetentionDays  int            // TTL de otel_spans
+	SpanDailyQuota     int            // spans/dia por app antes do sampling forçado; 0 desliga
+	SpanForcedRate     float64        // taxa do sampling forçado
+	SpanQuotaLocation  *time.Location // fuso da virada do dia da cota
+	SpanQuotaAlertTo   []string       // e-mails avisados ao entrar/sair do modo forçado
+
 	// NDOVU_SESSION_ENC_KEY: chave usada pelo BFF do dashboard para cifrar
 	// (AES-GCM) o JWT no cookie httpOnly de sessão. A API não consome — só
 	// exige presença/força em produção para fail-fast no boot.
@@ -196,6 +207,22 @@ func LoadFor(component string) (Config, error) {
 		DigestTickEvery:  time.Duration(envInt("NDOVU_DIGEST_TICK_SECONDS", 300)) * time.Second,
 
 		SessionEncKey: envStr("NDOVU_SESSION_ENC_KEY", ""),
+
+		OTLPPort:           envInt("NDOVU_OTLP_PORT", 4318),
+		OTLPMaxBodyBytes:   int64(envInt("NDOVU_OTLP_MAX_BODY_BYTES", 4<<20)),
+		OTLPMaxDecodedSize: int64(envInt("NDOVU_OTLP_MAX_DECODED_BYTES", 32<<20)),
+		SpanRetentionDays:  envInt("NDOVU_SPAN_RETENTION_DAYS", 30),
+		SpanDailyQuota:     envInt("NDOVU_SPAN_DAILY_QUOTA", 500_000),
+		SpanForcedRate:     envFloat("NDOVU_SPAN_FORCED_RATE", 0.1),
+		SpanQuotaAlertTo:   splitCSV(envStr("NDOVU_SPAN_QUOTA_ALERT_TO", "")),
+	}
+	loc, err := time.LoadLocation(envStr("NDOVU_SPAN_QUOTA_TZ", "America/Sao_Paulo"))
+	if err != nil {
+		return Config{}, fmt.Errorf("NDOVU_SPAN_QUOTA_TZ inválido: %w", err)
+	}
+	cfg.SpanQuotaLocation = loc
+	if len(cfg.SpanQuotaAlertTo) == 0 {
+		cfg.SpanQuotaAlertTo = cfg.DigestRecipients
 	}
 	if err := validate(cfg, component); err != nil {
 		return Config{}, err
@@ -209,6 +236,9 @@ func validate(cfg Config, component string) error {
 	}
 	if cfg.Environment != "development" && cfg.Environment != "test" && cfg.Environment != "production" {
 		return fmt.Errorf("NDOVU_ENV inválido: use development, test ou production")
+	}
+	if cfg.SpanForcedRate < 0 || cfg.SpanForcedRate > 1 {
+		return fmt.Errorf("NDOVU_SPAN_FORCED_RATE deve estar em [0, 1]")
 	}
 	if cfg.Environment != "production" {
 		return nil
@@ -293,6 +323,15 @@ func envInt(key string, def int) int {
 	if v := os.Getenv(key); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			return n
+		}
+	}
+	return def
+}
+
+func envFloat(key string, def float64) float64 {
+	if v := os.Getenv(key); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			return f
 		}
 	}
 	return def

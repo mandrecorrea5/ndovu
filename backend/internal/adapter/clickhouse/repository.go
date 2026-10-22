@@ -29,11 +29,14 @@ type Options struct {
 	Username string
 	Password string
 	Secure   bool
+	// SpanRetentionDays é o TTL de otel_spans. 0 usa o default (30 dias).
+	SpanRetentionDays int
 }
 
 // Repository implementa domain.EventWriter e domain.EventReader.
 type Repository struct {
-	conn driver.Conn
+	conn              driver.Conn
+	spanRetentionDays int
 }
 
 // Connect abre a conexão nativa, aguardando o servidor subir (compose).
@@ -62,7 +65,7 @@ func Connect(ctx context.Context, opts Options) (*Repository, error) {
 	deadline := time.Now().Add(90 * time.Second)
 	for {
 		if err = conn.Ping(ctx); err == nil {
-			return &Repository{conn: tracedConn{conn}}, nil
+			return &Repository{conn: tracedConn{conn}, spanRetentionDays: opts.SpanRetentionDays}, nil
 		}
 		if time.Now().After(deadline) {
 			return nil, fmt.Errorf("clickhouse indisponível após 90s: %w", err)
@@ -90,6 +93,9 @@ func (r *Repository) EnsureSchema(ctx context.Context) error {
 		if err := r.conn.Exec(ctx, stmt); err != nil {
 			return fmt.Errorf("aplicando schema: %w", err)
 		}
+	}
+	if err := r.conn.Exec(ctx, spanTTL(r.spanRetentionDays)); err != nil {
+		return fmt.Errorf("aplicando retenção de otel_spans: %w", err)
 	}
 	return nil
 }
@@ -369,7 +375,7 @@ func (r *Repository) FindEventsByUser(ctx context.Context, userID string) ([]dom
 	return scanEvents(rows)
 }
 
-// DeleteEventsByUser apaga TODOS os eventos de um user (LGPD: direito ao
+// DeleteEventsByUser apaga TODOS os eventos e spans OTLP de um user (LGPD: direito ao
 // esquecimento). Usa ALTER TABLE ... DELETE — assíncrono no ClickHouse:
 // a mutation entra na fila do sistema; consultas subsequentes podem ainda
 // ver os dados por alguns segundos até a merge propagar. Aceitável para o
@@ -386,6 +392,12 @@ func (r *Repository) DeleteEventsByUser(ctx context.Context, userID string) erro
 	)
 	if err := r.conn.Exec(ctx, sql); err != nil {
 		return fmt.Errorf("apagando eventos: %w", err)
+	}
+	// Spans OTLP com enduser.id do mesmo usuário também saem (AVALIACAO-OTLP §4.2).
+	if err := r.conn.Exec(ctx, fmt.Sprintf(
+		"ALTER TABLE otel_spans DELETE WHERE user_id = %s", quote(userID),
+	)); err != nil {
+		return fmt.Errorf("apagando spans: %w", err)
 	}
 	return nil
 }

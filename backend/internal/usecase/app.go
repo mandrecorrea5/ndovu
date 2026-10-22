@@ -31,6 +31,7 @@ type CreateAppInput struct {
 	Name           string
 	Technology     string
 	AllowedOrigins []string
+	AllowOTLP      bool
 	Company        string // rótulo textual (usado quando não há CompanyID)
 	CompanyID      string
 	Responsible    string
@@ -59,6 +60,7 @@ func (s *AppService) Create(ctx context.Context, in CreateAppInput, createdBy st
 		Name:           name,
 		Technology:     strings.TrimSpace(in.Technology),
 		AllowedOrigins: origins,
+		AllowOTLP:      in.AllowOTLP,
 		Company:        strings.TrimSpace(in.Company),
 		CompanyID:      strings.TrimSpace(in.CompanyID),
 		Responsible:    strings.TrimSpace(in.Responsible),
@@ -102,6 +104,7 @@ type UpdateAppInput struct {
 	Name           *string
 	Technology     *string
 	AllowedOrigins *[]string
+	AllowOTLP      *bool
 	Company        *string
 	CompanyID      *string
 	Responsible    *string
@@ -134,6 +137,9 @@ func (s *AppService) Update(ctx context.Context, id string, in UpdateAppInput) (
 			return domain.App{}, err
 		}
 		cur.AllowedOrigins = origins
+	}
+	if in.AllowOTLP != nil {
+		cur.AllowOTLP = *in.AllowOTLP
 	}
 	if cur.Name == "" {
 		return domain.App{}, domain.NewValidationError("name não pode ser vazio")

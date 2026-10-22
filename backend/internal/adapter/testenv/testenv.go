@@ -192,6 +192,23 @@ func applyBaseSchemaDirect(ctx context.Context) error {
 		`ALTER TABLE trace_events ADD COLUMN IF NOT EXISTS span_id String DEFAULT ''`,
 		`ALTER TABLE trace_events ADD COLUMN IF NOT EXISTS parent_span_id String DEFAULT ''`,
 		`ALTER TABLE trace_events ADD INDEX IF NOT EXISTS idx_trace_id trace_id TYPE bloom_filter(0.01) GRANULARITY 4`,
+
+		// otel_spans igual ao schema.sql, sem storage_policy (mesma razão acima).
+		`CREATE TABLE IF NOT EXISTS otel_spans (
+			app LowCardinality(String), trace_id String, span_id String,
+			parent_span_id String DEFAULT '', trace_state String DEFAULT '',
+			name LowCardinality(String), kind LowCardinality(String),
+			service_name LowCardinality(String), scope_name LowCardinality(String) DEFAULT '',
+			user_id String DEFAULT '', start_time DateTime64(9, 'UTC'), duration_ns Int64,
+			status_code LowCardinality(String), status_message String DEFAULT '',
+			resource_attrs Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+			span_attrs Map(LowCardinality(String), String) CODEC(ZSTD(3)),
+			events String DEFAULT '' CODEC(ZSTD(3)), links String DEFAULT '' CODEC(ZSTD(3)),
+			received_at DateTime64(3, 'UTC'),
+			INDEX idx_trace_id trace_id TYPE bloom_filter(0.01) GRANULARITY 4,
+			INDEX idx_user user_id TYPE bloom_filter(0.01) GRANULARITY 4
+		) ENGINE = ReplacingMergeTree PARTITION BY toDate(start_time)
+		ORDER BY (app, service_name, start_time, trace_id, span_id)`,
 	}
 	for _, s := range stmts {
 		if err := conn.Exec(ctx, s); err != nil {

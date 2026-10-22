@@ -58,6 +58,8 @@ func run() error {
 		Database: cfg.ClickHouseDB,
 		Username: cfg.ClickHouseUser,
 		Password: cfg.ClickHousePassword,
+
+		SpanRetentionDays: cfg.SpanRetentionDays,
 	})
 	if err != nil {
 		return fmt.Errorf("conectando ao ClickHouse: %w", err)
@@ -96,6 +98,10 @@ func run() error {
 	defer streamRT.Close()
 
 	writeSvc := usecase.NewWriteService(repo, dlqSink{streamRT}, logger)
+	// Regras de sampling e aviso de cota dos spans OTLP — preenchidos abaixo
+	// se o control plane estiver de pé.
+	var spanRules usecase.SpanRuleSource
+	var quotaAlerts usecase.QuotaNotifier
 
 	// Sampling adaptativo (Sprint G): filtra lotes antes de persistir.
 	// Requer control plane. Se estiver fora, WriteService segue sem sampling
@@ -105,6 +111,7 @@ func run() error {
 		samplingSvc := usecase.NewSamplingService(samplingStore, nil, logger)
 		go samplingSvc.Run(ctx, cfg.SamplingRefresh)
 		writeSvc = writeSvc.WithSampling(samplingSvc)
+		spanRules = samplingSvc
 	} else {
 		logger.Warn("sampling desligado — control plane indisponível", "err", err)
 	}
@@ -139,13 +146,33 @@ func run() error {
 			MinuteUTC:    cfg.DigestMinuteUTC,
 		}, logger)
 		go digestSvc.Run(ctx, cfg.DigestTickEvery)
+
+		quotaAlerts = usecase.NewQuotaAlerts(usecase.NewAuditService(ctl, logger), mailer,
+			cfg.SMTPFrom, cfg.SpanQuotaAlertTo, cfg.SpanForcedRate, logger)
 	}
 
 	bootSpan.End()
 
+	// Spans OTLP: consumidor próprio, em paralelo ao de eventos. Só o NATS
+	// transporta spans; nos outros backends o receptor da API nem sobe.
+	if streamRT.Spans != nil {
+		policy := usecase.NewSpanPolicy(spanRules, repo, quotaAlerts, usecase.SpanPolicyConfig{
+			DailyQuota: cfg.SpanDailyQuota,
+			ForcedRate: cfg.SpanForcedRate,
+			Location:   cfg.SpanQuotaLocation,
+		}, logger)
+		spanSvc := usecase.NewSpanWriteService(repo, policy, streamRT.Spans.DeadLetter, logger)
+		go func() {
+			if err := streamRT.Spans.Consumer.Run(ctx, spanSvc.HandleBatches); err != nil {
+				logger.Error("consumidor de spans encerrou com erro", "err", err)
+			}
+		}()
+	}
+
 	logger.Info("ndovu-writer consumindo",
 		"backend", cfg.StreamBackend,
 		"batch", cfg.WriterBatch,
+		"spans", streamRT.Spans != nil,
 	)
 	return streamRT.Consumer.Run(ctx, writeSvc.HandleBatches)
 }

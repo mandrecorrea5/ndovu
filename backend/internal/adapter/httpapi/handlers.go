@@ -274,19 +274,15 @@ func (h *Handlers) GetSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, detail)
 }
 
-// GetTrace devolve o rastro cronológico de todos os eventos com o mesmo
-// W3C trace_id — frontend + backend (se ambos instrumentados) em uma
-// única timeline correlacionada.
+// GetTrace devolve o trace unificado do W3C trace_id: eventos do SDK e
+// spans OTLP do backend, só dos apps que o requester pode ver.
 func (h *Handlers) GetTrace(w http.ResponseWriter, r *http.Request) {
-	events, err := h.query.TraceTimeline(r.Context(), chi.URLParam(r, "traceId"))
+	view, err := h.query.Trace(r.Context(), chi.URLParam(r, "traceId"), scopeFrom(r))
 	if err != nil {
 		h.writeError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"traceId": chi.URLParam(r, "traceId"),
-		"events":  events,
-	})
+	writeJSON(w, http.StatusOK, view)
 }
 
 // GetOverview agrega métricas da janela de tempo.

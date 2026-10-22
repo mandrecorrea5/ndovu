@@ -300,3 +300,32 @@ func TestAPIKeys_ListAPIKeysByCompany_JoinPorApp(t *testing.T) {
 		t.Errorf("esperava só chave de app-A, veio %+v", keysA)
 	}
 }
+
+// allow_otlp é do app e chega na chave autenticada — inclusive depois de
+// rotacionar a chave, que é o motivo de o flag não morar em api_keys.
+func TestApps_AllowOTLPChegaNaChave(t *testing.T) {
+	repo := testenv.StartPostgres(t)
+	ctx := context.Background()
+	cID := firstCompanyID(t, repo)
+	app, err := repo.CreateApp(ctx, domain.App{Name: "felpma-api", CompanyID: cID, AllowOTLP: true})
+	if err != nil || !app.AllowOTLP {
+		t.Fatalf("create: %+v %v", app, err)
+	}
+	if _, err := repo.CreateAPIKey(ctx, domain.APIKey{App: app.Name, AppID: app.ID, Prefix: "ndk_1"}, "h1", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.CreateAPIKey(ctx, domain.APIKey{App: app.Name, AppID: app.ID, Prefix: "ndk_2"}, "h2", ""); err != nil {
+		t.Fatal(err)
+	}
+	if k, err := repo.FindActiveKeyByHash(ctx, "h2"); err != nil || !k.AllowOTLP {
+		t.Fatalf("chave rotacionada perdeu o allow_otlp: %+v %v", k, err)
+	}
+
+	app.AllowOTLP = false
+	if updated, err := repo.UpdateApp(ctx, app.ID, app); err != nil || updated.AllowOTLP {
+		t.Fatalf("update: %+v %v", updated, err)
+	}
+	if k, _ := repo.FindActiveKeyByHash(ctx, "h2"); k.AllowOTLP {
+		t.Fatal("desligar no app tem que desligar na chave")
+	}
+}

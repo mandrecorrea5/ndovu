@@ -57,6 +57,21 @@ type Runtime struct {
 	Consumer Consumer
 	// Close libera as conexões do backend.
 	Close func()
+	// Spans é o transporte dos spans OTLP. Só o NATS implementa por ora;
+	// nos outros backends é nil e o receptor OTLP fica desligado.
+	Spans *SpanRuntime
+}
+
+// SpanConsumer drena lotes de spans OTLP, com a mesma semântica do Consumer.
+type SpanConsumer interface {
+	Run(ctx context.Context, handle func(ctx context.Context, batches []domain.SpanBatch) error) error
+}
+
+// SpanRuntime agrupa as pontas do transporte de spans.
+type SpanRuntime struct {
+	Publisher  domain.SpanStream
+	DeadLetter func(ctx context.Context, batch domain.SpanBatch, reason string) error
+	Consumer   SpanConsumer
 }
 
 // Options parametriza a fábrica.
@@ -115,6 +130,11 @@ func newNATS(opts Options, logger *slog.Logger) (*Runtime, error) {
 		nc.Close()
 		return nil, err
 	}
+	spanConsumer, err := natsstream.NewSpanConsumer(ctx, js, opts.WriterBatch, opts.WriterMaxWait, logger)
+	if err != nil {
+		nc.Close()
+		return nil, err
+	}
 	return &Runtime{
 		Publisher: pub,
 		DeadLetter: func(ctx context.Context, batch domain.IngestBatch, reason string) error {
@@ -122,6 +142,11 @@ func newNATS(opts Options, logger *slog.Logger) (*Runtime, error) {
 		},
 		Consumer: consumer,
 		Close:    func() { nc.Close() },
+		Spans: &SpanRuntime{
+			Publisher:  pub,
+			DeadLetter: pub.DeadLetterSpans,
+			Consumer:   spanConsumer,
+		},
 	}, nil
 }
 

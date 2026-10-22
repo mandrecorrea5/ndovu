@@ -2,6 +2,8 @@ package usecase
 
 import (
 	"context"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/marcoscorrea/ndovu/backend/internal/domain"
@@ -17,6 +19,7 @@ const (
 type QueryService struct {
 	reader    domain.EventReader
 	feedbacks domain.FeedbackStore // opcional: usado como fallback em Session()
+	spans     domain.SpanReader    // opcional: spans OTLP no waterfall do trace
 }
 
 // NewQueryService cria o serviço de consulta.
@@ -30,6 +33,12 @@ func NewQueryService(reader domain.EventReader) *QueryService {
 // nunca ter mandado eventos, ou o sampling agressivo pode ter descartado).
 func (s *QueryService) WithFeedbackFallback(store domain.FeedbackStore) *QueryService {
 	s.feedbacks = store
+	return s
+}
+
+// WithSpans liga os spans OTLP à consulta de trace.
+func (s *QueryService) WithSpans(reader domain.SpanReader) *QueryService {
+	s.spans = reader
 	return s
 }
 
@@ -138,12 +147,53 @@ func (s *QueryService) WebVitals(ctx context.Context, f domain.WebVitalFilter) (
 	return s.reader.FindWebVitals(ctx, f)
 }
 
-// TraceTimeline devolve todos os eventos com o mesmo W3C trace_id.
-func (s *QueryService) TraceTimeline(ctx context.Context, traceID string) ([]domain.TraceEvent, error) {
+// TraceView é o trace unificado: eventos do SDK (clique, fetch, erro JS,
+// request do servidor) e spans OTLP do backend, ligados pelo mesmo trace_id.
+// A montagem da árvore fica com quem exibe — os dois lados trazem
+// span_id/parent_span_id.
+type TraceView struct {
+	TraceID string              `json:"traceId"`
+	Events  []domain.TraceEvent `json:"events"`
+	Spans   []domain.Span       `json:"spans"`
+}
+
+// Trace devolve o trace unificado, restrito aos apps do scope (vazio = sem
+// restrição). Um trace atravessa apps — browser em um, servidor em outro —,
+// e quem vê só um deles recebe só a parte dele.
+func (s *QueryService) Trace(ctx context.Context, traceID string, scope []string) (TraceView, error) {
+	traceID = strings.ToLower(strings.TrimSpace(traceID))
 	if traceID == "" {
-		return nil, domain.NewValidationError("traceId é obrigatório")
+		return TraceView{}, domain.NewValidationError("traceId é obrigatório")
 	}
-	return s.reader.TraceTimeline(ctx, traceID)
+	events, err := s.reader.TraceTimeline(ctx, traceID)
+	if err != nil {
+		return TraceView{}, err
+	}
+	view := TraceView{TraceID: traceID, Events: filterByScope(events, scope), Spans: []domain.Span{}}
+	if s.spans != nil {
+		spans, err := s.spans.TraceSpans(ctx, traceID, scope)
+		if err != nil {
+			return TraceView{}, err
+		}
+		view.Spans = spans
+	}
+	return view, nil
+}
+
+func filterByScope(events []domain.TraceEvent, scope []string) []domain.TraceEvent {
+	if len(scope) == 0 {
+		if events == nil {
+			return []domain.TraceEvent{}
+		}
+		return events
+	}
+	out := make([]domain.TraceEvent, 0, len(events))
+	for _, e := range events {
+		if slices.Contains(scope, e.App) {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 func clampLimit(limit int) int {

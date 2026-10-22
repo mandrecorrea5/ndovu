@@ -117,6 +117,27 @@ func (s *SamplingService) FilterBatch(batch domain.IngestBatch) domain.IngestBat
 	return batch
 }
 
+// SpanRule devolve a regra de sampling de spans OTLP do app: a do próprio
+// app vence a global. Só regras com event_type "span" valem para spans.
+func (s *SamplingService) SpanRule(app string) (domain.SamplingRule, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var global domain.SamplingRule
+	hasGlobal := false
+	for _, r := range s.rules {
+		if r.EventType != SpanRuleType {
+			continue
+		}
+		if r.App == app {
+			return r, true
+		}
+		if r.App == "" {
+			global, hasGlobal = r, true
+		}
+	}
+	return global, hasGlobal
+}
+
 // selectRule aplica a regra de precedência descrita em ShouldKeep.
 // Iteração linear porque a lista é pequena (dezenas de regras no máximo).
 func (s *SamplingService) selectRule(app, eventType string) (domain.SamplingRule, bool) {
@@ -252,8 +273,8 @@ func validateSampling(in SamplingInput) error {
 	if in.SampleRate < 0 || in.SampleRate > 1 {
 		return domain.NewValidationError("sampleRate deve estar em [0, 1]")
 	}
-	if in.EventType != "" && !domain.EventType(in.EventType).Valid() {
-		return domain.NewValidationError("eventType inválido (page_view|action|http_request|error|custom)")
+	if in.EventType != "" && in.EventType != SpanRuleType && !domain.EventType(in.EventType).Valid() {
+		return domain.NewValidationError("eventType inválido (page_view|action|http_request|error|custom|span)")
 	}
 	return nil
 }

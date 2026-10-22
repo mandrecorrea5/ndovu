@@ -217,6 +217,7 @@ paths:
                     format: uri
                     example: https://www.example.com
                   description: Origens HTTPS do site autorizadas para a chave gerada; uma origem por domínio, sem caminho.
+                allowOtlp: { type: boolean, default: false, description: app de servidor — aceita spans OTLP. Não ligue em app de browser (chave pública). }
                 company: { type: string, example: ACME Ltda }
                 responsible: { type: string, example: ana@acme.com }
       responses:
@@ -265,6 +266,7 @@ paths:
                   type: array
                   maxItems: 20
                   items: { type: string, format: uri }
+                allowOtlp: { type: boolean }
                 company: { type: string }
                 responsible: { type: string }
       responses:
@@ -402,6 +404,63 @@ paths:
                     type: array
                     items: { $ref: "#/components/schemas/TraceEvent" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /v1/traces/{traceId}:
+    get:
+      tags: [consulta]
+      summary: Trace unificado (eventos do SDK + spans OTLP do backend)
+      description: |
+        Une, pelo mesmo trace_id W3C, os eventos do SDK (clique, fetch, erro,
+        request do servidor) e os spans recebidos por OTLP. Só entram os apps
+        que o requester pode ver — o browser e o servidor podem ser apps
+        diferentes. A árvore é montada pelo cliente a partir de
+        spanId/parentSpanId dos dois lados.
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: traceId, in: path, required: true, schema: { type: string, example: 4bf92f3577b34da6a3ce929d0e0e4736 } }
+      responses:
+        "200":
+          description: Trace
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  traceId: { type: string }
+                  events:
+                    type: array
+                    items: { $ref: "#/components/schemas/TraceEvent" }
+                  spans:
+                    type: array
+                    items: { $ref: "#/components/schemas/Span" }
+  /v1/traces:
+    servers:
+      - url: https://otlp.ndovy.solutions
+        description: Receptor OTLP (listener próprio, NDOVU_OTLP_PORT — 4318 local)
+    post:
+      tags: [ingestao]
+      summary: Receptor OTLP/HTTP de traces
+      description: |
+        ExportTraceServiceRequest do OpenTelemetry, em protobuf ou JSON, com
+        gzip opcional. Configuração no cliente, sem SDK do Ndovu:
+        OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.ndovy.solutions e
+        OTEL_EXPORTER_OTLP_HEADERS=x-api-key=ndk_... . Só aceita chave de app
+        marcado com allowOtlp. Spans recusados (sem ids, start fora da
+        retenção) vêm em partial_success; 429/503 trazem Retry-After.
+      security: [{ ApiKeyAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/x-protobuf: {}
+          application/json: {}
+      responses:
+        "200": { description: ExportTraceServiceResponse (com partial_success se houve recusa) }
+        "400": { description: payload inválido (google.rpc.Status) }
+        "401": { description: chave ausente ou inválida }
+        "403": { description: app sem allowOtlp }
+        "413": { description: corpo (ou corpo descomprimido) acima do limite }
+        "415": { description: Content-Type ou Content-Encoding não suportado }
+        "429": { description: rate limit da chave — reenviar após Retry-After }
+        "503": { description: buffer de ingestão indisponível — reenviar após Retry-After }
   /v1/stats/overview:
     get:
       tags: [consulta]
@@ -503,6 +562,7 @@ components:
         allowedOrigins:
           type: array
           items: { type: string, format: uri }
+        allowOtlp: { type: boolean, description: app de servidor — a chave dele aceita spans OTLP }
         company: { type: string }
         responsible: { type: string }
         createdAt: { type: string, format: date-time }
@@ -552,6 +612,40 @@ components:
             message: { type: string }
             body: {}
         metadata: { type: object, additionalProperties: true }
+    Span:
+      type: object
+      description: Span OpenTelemetry recebido por OTLP (atributos achatados em string).
+      properties:
+        app: { type: string }
+        traceId: { type: string }
+        spanId: { type: string }
+        parentSpanId: { type: string }
+        name: { type: string }
+        kind: { type: string, enum: [internal, server, client, producer, consumer, unspecified] }
+        serviceName: { type: string }
+        scopeName: { type: string }
+        startTime: { type: string, format: date-time }
+        durationNs: { type: integer, format: int64 }
+        statusCode: { type: string, enum: [unset, ok, error] }
+        statusMessage: { type: string }
+        resourceAttributes: { type: object, additionalProperties: { type: string } }
+        attributes: { type: object, additionalProperties: { type: string } }
+        events:
+          type: array
+          items:
+            type: object
+            properties:
+              time: { type: string, format: date-time }
+              name: { type: string }
+              attributes: { type: object, additionalProperties: { type: string } }
+        links:
+          type: array
+          items:
+            type: object
+            properties:
+              traceId: { type: string }
+              spanId: { type: string }
+        receivedAt: { type: string, format: date-time }
     TraceEvent:
       allOf:
         - $ref: "#/components/schemas/IngestEvent"

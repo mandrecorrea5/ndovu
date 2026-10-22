@@ -67,8 +67,8 @@ func EnsureStream(ctx context.Context, nc *nats.Conn, maxAge time.Duration) (jet
 	}
 	_, err = js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
 		Name:        StreamName,
-		Description: "Lotes de traces dos frontends (contrato v1)",
-		Subjects:    []string{subjectPrefix + ">", dlqPrefix + ">"},
+		Description: "Lotes de traces dos frontends (contrato v1) e spans OTLP",
+		Subjects:    []string{subjectPrefix + ">", spanPrefix + ">", dlqPrefix + ">"},
 		Storage:     jetstream.FileStorage,
 		Retention:   jetstream.LimitsPolicy,
 		MaxAge:      maxAge,

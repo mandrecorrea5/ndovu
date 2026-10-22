@@ -87,6 +87,7 @@ type APIKey struct {
 	AppID          string     `json:"appId,omitempty"`
 	App            string     `json:"app"`
 	AllowedOrigins []string   `json:"-"`
+	AllowOTLP      bool       `json:"-"` // herdado do app: a chave aceita OTLP
 	Label          string     `json:"label,omitempty"`
 	Prefix         string     `json:"prefix"`
 	Key            string     `json:"key,omitempty"`
@@ -105,6 +106,7 @@ type App struct {
 	Name           string    `json:"name"`
 	Technology     string    `json:"technology,omitempty"`
 	AllowedOrigins []string  `json:"allowedOrigins"`
+	AllowOTLP      bool      `json:"allowOtlp"` // app de servidor: só a chave dele aceita spans OTLP
 	CompanyID      string    `json:"companyId,omitempty"`
 	Company        string    `json:"company,omitempty"`
 	Responsible    string    `json:"responsible,omitempty"`

@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -93,6 +94,8 @@ func run() error {
 		Database: cfg.ClickHouseDB,
 		Username: cfg.ClickHouseUser,
 		Password: cfg.ClickHousePassword,
+
+		SpanRetentionDays: cfg.SpanRetentionDays,
 	})
 	if err != nil {
 		return fmt.Errorf("conectando ao ClickHouse: %w", err)
@@ -181,7 +184,7 @@ func run() error {
 	bootSpan.End()
 
 	ingestSvc := usecase.NewIngestService(streamRT.Publisher, logger)
-	querySvc := usecase.NewQueryService(repo).WithFeedbackFallback(ctl)
+	querySvc := usecase.NewQueryService(repo).WithFeedbackFallback(ctl).WithSpans(repo)
 	handlers := httpapi.NewHandlers(ingestSvc, querySvc, authSvc, keySvc, appSvc, companySvc, issueSvc, alertSvc, releaseSvc, sourceMapSvc, savedViewSvc, funnelSvc, retentionSvc, digestSvc, auditSvc, gdprSvc, permissionSvc, samplingSvc, snapshotSvc, anomalySvc, feedbackSvc, logger, cfg)
 	router := httpapi.NewRouter(handlers, cfg, authSvc, keySvc, ctl, ctl, metrics, logger, api.SpecFS)
 
@@ -194,13 +197,20 @@ func run() error {
 		IdleTimeout:       60 * time.Second,
 	}
 
-	errCh := make(chan error, 1)
-	go func() {
-		logger.Info("ndovu-api ouvindo", "port", cfg.Port)
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errCh <- err
-		}
-	}()
+	servers := []*http.Server{srv}
+	if otlpSrv := newOTLPServer(cfg, streamRT, keySvc, metrics, logger); otlpSrv != nil {
+		servers = append(servers, otlpSrv)
+	}
+
+	errCh := make(chan error, len(servers))
+	for _, s := range servers {
+		go func() {
+			logger.Info("ndovu-api ouvindo", "addr", s.Addr)
+			if err := s.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				errCh <- err
+			}
+		}()
+	}
 
 	select {
 	case err := <-errCh:
@@ -209,7 +219,37 @@ func run() error {
 		logger.Info("encerrando...")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 		defer cancel()
-		return srv.Shutdown(shutdownCtx)
+		var errs []error
+		for _, s := range servers {
+			errs = append(errs, s.Shutdown(shutdownCtx))
+		}
+		return errors.Join(errs...)
+	}
+}
+
+// newOTLPServer monta o listener do receptor OTLP (host otlp.<domínio>).
+// nil quando desligado (porta 0) ou quando o backend de stream não transporta
+// spans — hoje só o NATS transporta.
+func newOTLPServer(cfg config.Config, streamRT *stream.Runtime, keys *usecase.APIKeyService, metrics *platform.Metrics, logger *slog.Logger) *http.Server {
+	if cfg.OTLPPort <= 0 {
+		return nil
+	}
+	if streamRT.Spans == nil {
+		logger.Warn("receptor OTLP desligado — o backend de stream não transporta spans", "backend", cfg.StreamBackend)
+		return nil
+	}
+	ingest := usecase.NewSpanIngestService(streamRT.Spans.Publisher, logger)
+	return &http.Server{
+		Addr: fmt.Sprintf(":%d", cfg.OTLPPort),
+		Handler: httpapi.NewOTLPRouter(ingest, keys, metrics, logger, httpapi.OTLPOptions{
+			MaxBodyBytes:   cfg.OTLPMaxBodyBytes,
+			MaxDecodedSize: cfg.OTLPMaxDecodedSize,
+			MaxSpanAge:     time.Duration(cfg.SpanRetentionDays) * 24 * time.Hour,
+		}),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 }
 
