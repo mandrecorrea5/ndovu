@@ -25,6 +25,7 @@ melhores práticas, casos avançados), veja [`USO.md`](USO.md).
 11. [Opções de configuração](#11-opções-de-configuração)
 12. [LGPD e consentimento](#12-lgpd-e-consentimento)
 13. [Erros comuns](#13-erros-comuns)
+14. [Backend com OpenTelemetry (OTLP)](#14-backend-com-opentelemetry-otlp)
 
 ---
 
@@ -969,6 +970,52 @@ curl -sX POST http://localhost:18081/v1/events \
   -d '{"app":"<SEU_APP>","session":{"sessionId":"test"},"events":[]}'
 # => {"accepted": 0}  (ok, aceitou lote vazio)
 ```
+
+---
+
+## 14. Backend com OpenTelemetry (OTLP)
+
+O SDK cobre o frontend e, no Node, o request do servidor. Para ver **dentro**
+do backend — handler, SQL, chamada a outro serviço, fila — em qualquer
+linguagem, exporte OpenTelemetry direto para o Ndovu. Não há SDK nosso no
+servidor: é o exporter OTLP/HTTP padrão.
+
+**1. Crie um app de servidor.** Em *Admin → Apps*, cadastre um app separado do
+frontend (ex.: `felpma-api`) e marque **“A chave deste app aceita spans OTLP”**.
+Nunca ligue isso no app do browser: a chave dele é pública.
+
+**2. Configure o exporter** (variáveis padrão do OTel, valem para Node, Go,
+Java, Python, .NET):
+
+```
+OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp.ndovy.solutions
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+OTEL_EXPORTER_OTLP_HEADERS=x-api-key=ndk_...     # chave do app de servidor
+OTEL_SERVICE_NAME=felpma-api
+OTEL_TRACES_SAMPLER=parentbased_traceidratio     # recomendado
+OTEL_TRACES_SAMPLER_ARG=0.25
+```
+
+gRPC não é aceito — use `http/protobuf` (ou `http/json`).
+
+**3. Propague o `traceparent` do browser.** É o que liga o clique ao span do
+banco: o fetch instrumentado pelo SDK manda o header, e a instrumentação HTTP
+do OTel no servidor continua o mesmo trace. No dashboard, qualquer evento com
+trace tem o link *trace* → waterfall com os dois lados.
+
+**O que acontece com os spans:**
+
+| | |
+|---|---|
+| Redação | atributos com `password`, `token`, `secret`, `authorization`, `cookie`, `api-key`, `card`… viram `***`; query string sai de `url.full`/`http.url`/`http.target` |
+| Sampling | regra em *Admin → Sampling* com tipo `span`; a decisão é por trace (o trace inteiro fica ou sai) e trace com erro no mesmo lote sempre fica |
+| Cota | 500 mil spans/dia por app. Passou disso, o app grava só 10% dos traces (erros continuam) até a meia-noite de Brasília; entrada e saída vão para o audit log |
+| Retenção | 30 dias |
+| LGPD | o esquecimento de um usuário apaga também os spans com `enduser.id` dele |
+
+**Respostas do receptor:** `403` = app sem OTLP ligado; `429`/`503` = o
+exporter reenvia sozinho; `200` com `partial_success` = alguns spans recusados
+(sem ids, ou `startTime` fora da retenção — relógio do servidor errado).
 
 ---
 

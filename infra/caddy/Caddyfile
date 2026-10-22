@@ -9,6 +9,7 @@
 #
 #   {$NDOVU_APP_DOMAIN} → dashboard (inclui /api/* — BFF do próprio Next) + /metrics
 #   {$NDOVU_API_DOMAIN} → api:8080 + /metrics
+#   {$NDOVU_OTLP_DOMAIN} → api:4318 (receptor OTLP/HTTP, listener próprio)
 #
 # O dashboard é o BFF completo: suas rotas /api/* (dashboard/src/app/api/**)
 # falam com a api Go direto via rede interna (http://api:8080, ver
@@ -75,5 +76,27 @@ http://{$NDOVU_API_DOMAIN} {
 	}
 	handle {
 		reverse_proxy api:8080
+	}
+}
+
+# Receptor OTLP (docs/AVALIACAO-OTLP.md §3.1). Host próprio com os paths
+# padrão da spec: o cliente configura só OTEL_EXPORTER_OTLP_ENDPOINT, e o
+# POST /v1/traces daqui nunca se confunde com o GET /v1/traces/{id} da API.
+# Sem `encode`: o corpo chega gzip do exporter e a resposta é minúscula.
+# /metrics não existe neste listener.
+http://{$NDOVU_OTLP_DOMAIN} {
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+	handle /v1/* {
+		reverse_proxy api:4318
+	}
+	handle /health {
+		reverse_proxy api:4318
+	}
+	handle {
+		respond 404
 	}
 }

@@ -55,6 +55,15 @@ x-app-env: &app-env
   OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
   OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-parentbased_always_on}
   OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-}
+  # Para o Ndovu mandar os próprios traces para o próprio receptor OTLP
+  # (dogfooding da Fase 1), crie um app com "aceita OTLP" e use:
+  #   OTEL_EXPORTER_OTLP_ENDPOINT=http://api:4318
+  #   OTEL_EXPORTER_OTLP_HEADERS=x-api-key=<chave do app>
+  OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+  # Cota diária de spans por app (sampling forçado ao estourar) e retenção.
+  NDOVU_SPAN_DAILY_QUOTA: ${NDOVU_SPAN_DAILY_QUOTA:-500000}
+  NDOVU_SPAN_FORCED_RATE: ${NDOVU_SPAN_FORCED_RATE:-0.1}
+  NDOVU_SPAN_RETENTION_DAYS: ${NDOVU_SPAN_RETENTION_DAYS:-30}
 
 services:
   postgres:
@@ -223,6 +232,9 @@ services:
       NDOVU_BOOTSTRAP_INGEST_KEY: ${NDOVU_BOOTSTRAP_INGEST_KEY:-dev-ingest-key}
     ports:
       - "18081:8080"
+      # Receptor OTLP (otlp.<domínio> em produção). Host 14318 para não
+      # disputar o 4318 com o Jaeger local.
+      - "${NDOVU_OTLP_HOST_PORT:-14318}:4318"
     depends_on:
       postgres:
         condition: service_healthy

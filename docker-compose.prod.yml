@@ -5,6 +5,10 @@ services:
     environment:
       NDOVU_APP_DOMAIN: "${NDOVU_APP_DOMAIN:?Set NDOVU_APP_DOMAIN}"
       NDOVU_API_DOMAIN: "${NDOVU_API_DOMAIN:?Set NDOVU_API_DOMAIN}"
+      # Receptor OTLP. Default inerte (.invalid nunca resolve) para o deploy
+      # não quebrar antes de o host existir no túnel — e porque um
+      # http://{$VAR} vazio no Caddy casaria com qualquer host.
+      NDOVU_OTLP_DOMAIN: "${NDOVU_OTLP_DOMAIN:-otlp.invalid}"
       # Basic Auth de /metrics (usuário ndovu). Hash bcrypt
       # (caddy hash-password) — a senha clara vive só no cofre do monitoramento.
       NDOVU_METRICS_PASSWORD_HASH: "${NDOVU_METRICS_PASSWORD_HASH:?Set NDOVU_METRICS_PASSWORD_HASH}"

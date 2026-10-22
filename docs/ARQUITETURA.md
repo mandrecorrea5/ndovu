@@ -1107,6 +1107,40 @@ quando o trace é amostrado.
 Volume medido localmente: 2–3 spans por `POST /v1/events` e 2 por lote do
 writer — a 1 M eventos/dia em lotes de 20, ~150 k spans/dia do próprio Ndovu.
 
+### 18.5. Receptor OTLP (Fase 1)
+
+Qualquer backend instrumentado com OpenTelemetry manda spans para o Ndovu;
+o `GET /v1/traces/{traceId}` une esses spans aos eventos do SDK e o dashboard
+mostra o waterfall em `/traces/{traceId}`. Desenho e decisões:
+`docs/AVALIACAO-OTLP.md`; guia do cliente: `INTEGRATION.md` §14.
+
+```
+exporter OTel ─HTTP─▶ api :4318 (POST /v1/traces) ─▶ NATS ndovu.spans.<app> ─▶ writer ─▶ otel_spans
+                       otlp.<domínio> no Caddy         consumidor próprio         política: regra + cota
+```
+
+| Peça | Onde | Notas |
+|---|---|---|
+| Listener | `NDOVU_OTLP_PORT` (4318; 0 desliga) | outro `http.Server` no processo da API, sem otelhttp |
+| Auth | `X-Api-Key` + `apps.allow_otlp` | flag no app (cada app tem uma chave ativa; rotação preserva) |
+| Decodificação | `internal/adapter/otlp` | pdata do Collector; protobuf/JSON, gzip; teto do corpo cru e do descomprimido |
+| Limites por span | 128 atributos, 4 KB por valor, 128 KB somados | garante que um span cabe numa mensagem NATS; excedente → `ndovu.truncated=true` |
+| Redação | `usecase.RedactSpan`, na API | antes do stream: PII não chega ao disco do NATS |
+| Stream | `ndovu.spans.<app>`, consumidor `ndovu-span-writer` | lote partido abaixo de 900 KB; Msg-Id pelo hash; DLQ em `ndovu.dlq.spans.<app>`. **Só NATS** — com Kafka/RabbitMQ o receptor não sobe |
+| Política | `usecase.SpanPolicy`, no writer | regra `event_type=span` + cota diária (`NDOVU_SPAN_DAILY_QUOTA`, `NDOVU_SPAN_FORCED_RATE`, `NDOVU_SPAN_QUOTA_TZ`); decisão por `fnv(trace_id)` |
+| Armazenamento | `otel_spans` | ReplacingMergeTree, partição por dia, TTL `NDOVU_SPAN_RETENTION_DAYS` (30) aplicado no boot |
+
+**Sem loop de autoexportação.** O Ndovu pode exportar os próprios traces para
+o próprio receptor (`OTEL_EXPORTER_OTLP_ENDPOINT=http://api:4318`). Para isso
+não realimentar, nada no caminho dos spans é rastreado: o listener não usa
+otelhttp, a publicação não abre span e o writer de spans roda com
+`WithoutTracing`. Verificado: parado, o volume cresce só com os ciclos do
+writer (2 spans/min).
+
+**Cota.** O contador fica em memória no writer (processo único), reconstruído
+no boot com `count()` do dia. Conta depois do insert, então reentrega não
+infla a cota, e o estouro passa do limite em até um lote do writer.
+
 ---
 
 ## 19. Desastres e recuperação

@@ -1,6 +1,6 @@
 # Avaliação — receber OTLP no Ndovu
 
-Status: **aprovada · Fase 0 concluída** (2026-10-22) · decisões em §6
+Status: **aprovada · Fases 0 e 1 concluídas** (2026-10-22) · decisões em §6 · resultado da Fase 1 em §8
 
 ## 1. Por que
 
@@ -16,8 +16,8 @@ qualquer linguagem, sem SDK nosso) manda spans e logs para o Ndovu, e o
 diferencial — o Sentry/Datadog fazem isso com SDK proprietário; nós faríamos
 com o padrão aberto, sem lock-in para quem integra.
 
-O que **não** é verdade hoje e precisa ficar claro: o Ndovu não tem receptor
-OTLP. O schema já tem `trace_id/span_id/parent_span_id` em `trace_events`
+O que **não** era verdade quando este documento foi escrito: o Ndovu não
+tinha receptor OTLP (existe desde a Fase 1, §8). O schema já tem `trace_id/span_id/parent_span_id` em `trace_events`
 (comentário "OpenTelemetry ingest", `schema.sql:57`), mas isso é a correlação
 W3C dos eventos *do nosso contrato*, não ingestão de spans.
 
@@ -156,7 +156,7 @@ Este documento propõe traces → logs e para aí até medir uso e custo.
 | Fase | Entrega | Tamanho |
 |---|---|---|
 | 0 ✅ | Dogfooding: Ndovu se instrumenta com OTel (§18.4 da ARQUITETURA) exportando para um Jaeger local — gera o tráfego de teste da Fase 1 | P |
-| 1 | `POST /v1/traces` (HTTP, proto+JSON, gzip) · `otel_spans` · sampling por trace · flag `allow_otlp` na chave · waterfall unificado no dashboard | G |
+| 1 ✅ | `POST /v1/traces` (HTTP, proto+JSON, gzip) · `otel_spans` · sampling por trace · flag `allow_otlp` (no app, ver §8) · waterfall unificado no dashboard | G |
 | 1.5 | Spans com erro viram issues · RED por rota via materialized view | M |
 | 2 | `POST /v1/logs` · `otel_logs` · busca e salto log→trace | M/G |
 | — | Métricas OTLP | adiado |
@@ -196,3 +196,51 @@ Este documento propõe traces → logs e para aí até medir uso e custo.
   receptor OTLP.
 - Pendente: medir bytes/span no ClickHouse (só possível com `otel_spans`, Fase 1);
   propagação nos backends Kafka e RabbitMQ do stream.
+
+## 8. Resultado da Fase 1 (2026-10-22)
+
+Entregue: receptor `POST /v1/traces` em listener próprio (`:4318`, host
+`otlp.<domínio>` no Caddy), transporte `ndovu.spans.<app>` no NATS, tabela
+`otel_spans`, política de sampling por trace + cota diária no writer,
+`GET /v1/traces/{traceId}` unificado e com scope de tenant, waterfall em
+`/traces/{traceId}` no dashboard, checkbox "aceita OTLP" no cadastro de app e
+tipo `span` nas regras de sampling. Detalhes em ARQUITETURA §18.5; guia do
+cliente em INTEGRATION §14.
+
+Verificado de ponta a ponta com o próprio Ndovu exportando para si: evento do
+SDK (span B1) → `GET /v1/sessions/{sessionId}` (pai = B1) → dois
+`SELECT trace_events`, no mesmo waterfall. Chave de app de browser recebe
+403; JSON e gzip aceitos; cota estourada liga o modo forçado e grava
+`otlp.quota.forced_sampling_on` no audit log.
+
+**Desvios do desenho original:**
+
+1. **`allow_otlp` é do app, não da chave.** `CreateAPIKey` revoga a chave
+   anterior do app (uma ativa por app); um flag na chave se perderia a cada
+   rotação. Na prática é o mesmo controle: o app de servidor (`felpma-api`) é
+   separado do app de browser, como já recomendado.
+2. **Redação na API, não no writer** (§4.2 dizia writer). Assim o dado
+   sensível não chega nem ao disco do stream.
+3. **Regras de sampling só valem para spans com `event_type = span`.** A regra
+   global de eventos (tipo vazio) não corta spans — volume e granularidade são
+   outros.
+4. **"Trace com erro sempre fica" vale dentro do lote.** É head sampling no
+   servidor: um erro que chega num lote posterior não resgata spans já
+   descartados do mesmo trace. Tail sampling de verdade exigiria segurar spans
+   em memória por trace — fora do escopo.
+5. **O estouro da cota passa do limite em até um lote do writer** (a conta é
+   feita depois do insert, para reentrega não inflar o contador).
+6. **Corrigido de passagem:** o `GET /v1/traces/{traceId}` não filtrava por
+   tenant — qualquer usuário logado lia o trace de qualquer app pelo id.
+
+**Pendente para ligar em produção** (fora do código, manual):
+
+- Public hostname `otlp.ndovy.solutions` no Cloudflare Tunnel apontando para
+  o `caddy`, e `NDOVU_OTLP_DOMAIN=otlp.ndovy.solutions` no `.env` da VPS (sem
+  isso o bloco do Caddy fica inerte em `otlp.invalid`).
+- `NDOVU_SPAN_QUOTA_ALERT_TO` (default: destinatários do digest) para o
+  e-mail de cota ter para quem ir.
+
+**Para depois:** exportação LGPD (portabilidade) ainda devolve só eventos, não
+spans; Kafka e RabbitMQ não transportam spans; bytes/span reais em produção
+para recalibrar a cota (`CAPACITY-VPS.md`).

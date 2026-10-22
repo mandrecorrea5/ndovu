@@ -69,6 +69,12 @@ com `--profile otel` e exporte `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:431
 antes do `go run`. UI em `http://localhost:16686`. Ver `docs/ARQUITETURA.md` §18.4. Para gerar carga de exemplo,
 use o `seed` do repositório `ndovu-sdk`.
 
+Receptor OTLP (spans de backends de clientes): a API abre um segundo listener
+em `NDOVU_OTLP_PORT` (4318; no compose, host `14318`). Só aceita chave de app
+marcado como "aceita OTLP". Para o Ndovu mandar os próprios traces para si
+mesmo, aponte `OTEL_EXPORTER_OTLP_ENDPOINT` para esse listener com
+`OTEL_EXPORTER_OTLP_HEADERS=x-api-key=<chave>`. Ver `docs/ARQUITETURA.md` §18.5.
+
 O buffer de ingestão é agnóstico: escolha o backend por `NDOVU_STREAM_BACKEND`
 (`nats` default, `kafka` ou `rabbitmq`). O Kafka (Redpanda) e o RabbitMQ não
 sobem por padrão — habilite o perfil correspondente junto com a variável:
