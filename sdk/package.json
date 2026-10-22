@@ -1,6 +1,6 @@
 {
   "name": "@ndovu/sdk",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "SDKs de referência do contrato v1 do Ndovu — browser, Next.js, Node e React Native. Dependências zero.",
   "type": "module",
   "license": "UNLICENSED",
@@ -17,7 +17,8 @@
     "./react-native": "./src/ndovu-react-native.js"
   },
   "scripts": {
-    "check": "node --check src/ndovu-browser.js && node --check src/ndovu-next.js && node --check src/ndovu-node.js && node --check src/ndovu-react-native.js && node --check tools/seed/seed.mjs && node test/flush-browser.mjs && node test/flush-react-native.mjs",
+    "check": "node --check src/ndovu-browser.js && node --check src/ndovu-next.js && node --check src/ndovu-node.js && node --check src/ndovu-react-native.js && node --check tools/seed/seed.mjs && node test/flush-browser.mjs && node test/flush-react-native.mjs && node test/trace-node.mjs",
+    "test:trace": "node test/trace-node.mjs",
     "test:flush": "node test/flush-browser.mjs && node test/flush-react-native.mjs",
     "test:exports": "node --input-type=module -e \"const mods=['./src/ndovu-node.js','./src/ndovu-react-native.js']; for (const m of mods) { const x = await import(m); if (!x.createNdovu) throw new Error('createNdovu ausente em '+m); } console.log('exports ok');\"",
     "seed": "node tools/seed/seed.mjs"

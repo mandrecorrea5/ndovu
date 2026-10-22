@@ -18,6 +18,33 @@ Como a correção é do lado do servidor, ela alcança quem **não** atualizou: 
 parado na 1.0.0 passa a aparecer como `1.0.0` no dado. Consulte com
 `JSONExtractString(session_attrs, 'sdkVersion')`.
 
+## 1.4.0 — 2026-10-21
+
+`@ndovu/sdk` 1.4.0 · node `1.2.0-node` · browser `1.3.0` (inalterado) ·
+react-native `1.1.0-rn` (inalterado) · go (inalterado)
+
+### O servidor Node entra no mesmo trace do browser
+
+O `middleware()` passa a ler o header W3C `traceparent` que o browser SDK já
+envia pelo `instrumentFetch`. O evento `http_request` do servidor sai com o
+mesmo `traceId` e com `parentSpanId` = span do fetch do browser — clique e
+request aparecem juntos em `GET /v1/traces/{traceId}`. Antes, os eventos do
+servidor iam sem `trace` e a correlação só existia se você preenchesse à mão.
+
+- **Eventos manuais herdam o contexto.** `action`/`error`/`custom`/`httpRequest`
+  chamados dentro do handler (mesmo depois de `await`) saem como span filho do
+  request e com a sessão dele, via `AsyncLocalStorage`. Fora de request, nada
+  muda: sem `trace`, sessão do processo.
+- **Sem header, trace novo.** Header ausente ou inválido (traceId/spanId
+  zerados, versão `ff`) abre um trace raiz em vez de propagar lixo.
+- **Chamadas de saída:** `ndovu.traceparent()` devolve o header para propagar
+  a outro serviço; `ndovu.currentTrace()` devolve `{ traceId, spanId }`.
+- **Trace explícito:** todos os métodos aceitam `trace` e ele vence o contexto.
+- Exportados `parseTraceparent` e `formatTraceparent`.
+
+Para quem integra: atualize o arquivo e mantenha `app.use(ndovu.middleware())`
+antes das rotas. Nenhuma mudança no backend.
+
 ## 1.3.0 — 2026-10-17
 
 `@ndovu/sdk` 1.3.0 · browser `1.3.0` · react-native `1.1.0-rn` ·
