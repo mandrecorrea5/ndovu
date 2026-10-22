@@ -54,6 +54,8 @@ func (s *SamplingService) Run(ctx context.Context, interval time.Duration) {
 	if interval <= 0 {
 		interval = 30 * time.Second
 	}
+	// Uma query a cada 30s: rastrear geraria ~2.900 traces/dia sem informação.
+	ctx = platform.WithoutTracing(ctx)
 	if err := s.Refresh(ctx); err != nil {
 		s.logger.WarnContext(ctx, "sampling: refresh inicial falhou", "err", err)
 	}

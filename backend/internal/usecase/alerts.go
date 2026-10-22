@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/marcoscorrea/ndovu/backend/internal/domain"
+	"github.com/marcoscorrea/ndovu/backend/internal/platform"
 )
 
 // AlertNotifier envia a mensagem final. Um adapter separado para Slack e
@@ -186,13 +187,13 @@ func (s *AlertService) Run(ctx context.Context, interval time.Duration) {
 	defer ticker.Stop()
 	s.logger.Info("avaliador de alertas iniciado", "interval", interval)
 	// Avalia uma vez no boot (útil para catch-up após restart)
-	s.EvaluateOnce(ctx)
+	platform.InSpan(ctx, "alerts.evaluate", s.EvaluateOnce)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.EvaluateOnce(ctx)
+			platform.InSpan(ctx, "alerts.evaluate", s.EvaluateOnce)
 		}
 	}
 }

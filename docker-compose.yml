@@ -26,6 +26,13 @@ x-app-env: &app-env
   NDOVU_S3_USE_SSL: ${NDOVU_S3_USE_SSL:-false}
   NDOVU_SNAPSHOT_BUCKET: ${NDOVU_SNAPSHOT_BUCKET:-ndovu-snapshots}
 
+  # Tracing OTel do próprio Ndovu (Fase 0 do OTLP, docs/AVALIACAO-OTLP.md).
+  # Vazio = desligado. Para ligar com o Jaeger local:
+  #   OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318 docker compose --profile otel up
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+  OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-parentbased_always_on}
+  OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-}
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -126,6 +133,16 @@ services:
       mc mb --ignore-existing local/ndovu-snapshots;
       echo 'buckets ndovu-cold e ndovu-snapshots prontos';
       "
+
+  # Jaeger: destino dos traces do próprio Ndovu na Fase 0 do OTLP. Só sobe
+  # com --profile otel. UI em :16686, OTLP/HTTP em :4318 (gRPC fica de fora,
+  # como na proposta). Armazena em memória: reiniciou, perdeu.
+  jaeger:
+    image: jaegertracing/jaeger:2.22.0
+    profiles: ["otel"]
+    ports:
+      - "${JAEGER_UI_PORT:-16686}:16686" # UI
+      - "${JAEGER_OTLP_PORT:-4318}:4318" # OTLP/HTTP (também para apps do host)
 
   api:
     build: ./backend

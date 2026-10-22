@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/marcoscorrea/ndovu/backend/internal/domain"
+	"github.com/marcoscorrea/ndovu/backend/internal/platform"
 )
 
 // AnomalyService avalia regras periodicamente (roda no writer). Para cada
@@ -36,7 +37,7 @@ func (s *AnomalyService) Run(ctx context.Context, interval time.Duration) {
 		interval = 5 * time.Minute
 	}
 	s.logger.Info("avaliador de anomalias iniciado", "interval", interval)
-	s.EvaluateOnce(ctx)
+	platform.InSpan(ctx, "anomaly.evaluate", s.EvaluateOnce)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -44,7 +45,7 @@ func (s *AnomalyService) Run(ctx context.Context, interval time.Duration) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.EvaluateOnce(ctx)
+			platform.InSpan(ctx, "anomaly.evaluate", s.EvaluateOnce)
 		}
 	}
 }

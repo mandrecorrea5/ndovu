@@ -38,6 +38,7 @@ func Connect(ctx context.Context, databaseURL string, logger *slog.Logger) (*Rep
 	}
 	cfg.MaxConns = 5
 	cfg.MaxConnLifetime = 30 * time.Minute
+	cfg.ConnConfig.Tracer = queryTracer{}
 
 	var pool *pgxpool.Pool
 	deadline := time.Now().Add(60 * time.Second)

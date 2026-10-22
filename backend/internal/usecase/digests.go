@@ -77,13 +77,13 @@ func (s *DigestService) Run(ctx context.Context, interval time.Duration) {
 	defer ticker.Stop()
 	// Chance de envio já no primeiro tick — útil para catch-up após restart
 	// se a hora do envio já passou hoje.
-	s.tick(ctx)
+	platform.InSpan(ctx, "digest.tick", s.tick)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.tick(ctx)
+			platform.InSpan(ctx, "digest.tick", s.tick)
 		}
 	}
 }

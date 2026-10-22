@@ -44,6 +44,17 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	// Tracing OTel do próprio Ndovu — ligado só com OTEL_EXPORTER_OTLP_ENDPOINT.
+	shutdownTracing, err := platform.SetupTracing(ctx, "ndovu-api", platform.BuildVersion(), logger)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := shutdownTracing(context.Background()); err != nil {
+			logger.Warn("encerrando tracing", "err", err)
+		}
+	}()
+
 	// Stream (lado de publicação da ingestão) — backend selecionado por
 	// NDOVU_STREAM_BACKEND (nats | kafka)
 	streamRT, err := stream.New(ctx, stream.Options{
@@ -71,8 +82,13 @@ func run() error {
 	}
 	defer streamRT.Close()
 
+	// Boot (schema, migrações, bootstrap) num trace só. bootCtx vale só para
+	// as chamadas de inicialização — conexões e goroutines longas usam ctx,
+	// senão tudo que fizerem viraria filho do span de startup.
+	bootCtx, bootSpan := platform.Tracer().Start(ctx, "startup")
+
 	// ClickHouse (lado de consulta) — o schema é garantido por quem chegar primeiro
-	repo, err := clickhouse.Connect(ctx, clickhouse.Options{
+	repo, err := clickhouse.Connect(bootCtx, clickhouse.Options{
 		Addr:     cfg.ClickHouseAddr,
 		Database: cfg.ClickHouseDB,
 		Username: cfg.ClickHouseUser,
@@ -82,12 +98,12 @@ func run() error {
 		return fmt.Errorf("conectando ao ClickHouse: %w", err)
 	}
 	defer repo.Close()
-	if err := repo.EnsureSchema(ctx); err != nil {
+	if err := repo.EnsureSchema(bootCtx); err != nil {
 		return err
 	}
 
 	// Control plane (Postgres): usuários do backoffice e chaves de API
-	ctl, err := ctlpostgres.Connect(ctx, cfg.PostgresURL, logger)
+	ctl, err := ctlpostgres.Connect(bootCtx, cfg.PostgresURL, logger)
 	if err != nil {
 		return fmt.Errorf("conectando ao Postgres (control plane): %w", err)
 	}
@@ -111,7 +127,7 @@ func run() error {
 	permissionSvc := usecase.NewPermissionService(ctl, ctl, ctl)
 	samplingSvc := usecase.NewSamplingService(ctl, metrics, logger)
 	// Load inicial das regras — refresh contínuo roda no writer.
-	_ = samplingSvc.Refresh(ctx)
+	_ = samplingSvc.Refresh(bootCtx)
 	// Anomaly service — o loop de avaliação roda no writer; aqui só serve
 	// os endpoints CRUD/consulta.
 	anomalySvc := usecase.NewAnomalyService(ctl, repo, usecase.NewAlertDispatcher(), logger)
@@ -151,16 +167,18 @@ func run() error {
 		HourUTC:      cfg.DigestHourUTC,
 		MinuteUTC:    cfg.DigestMinuteUTC,
 	}, logger)
-	if err := authSvc.EnsureBootstrapAdmin(ctx, cfg.AdminEmail, cfg.AdminPassword); err != nil {
+	if err := authSvc.EnsureBootstrapAdmin(bootCtx, cfg.AdminEmail, cfg.AdminPassword); err != nil {
 		return err
 	}
 	if cfg.Environment != "production" {
-		if err := keySvc.EnsureBootstrapKey(ctx, cfg.BootstrapIngestKey, "dev"); err != nil {
+		if err := keySvc.EnsureBootstrapKey(bootCtx, cfg.BootstrapIngestKey, "dev"); err != nil {
 			return err
 		}
 	} else {
 		logger.Info("bootstrap de chave de ingestão desativado em produção")
 	}
+
+	bootSpan.End()
 
 	ingestSvc := usecase.NewIngestService(streamRT.Publisher, logger)
 	querySvc := usecase.NewQueryService(repo).WithFeedbackFallback(ctl)

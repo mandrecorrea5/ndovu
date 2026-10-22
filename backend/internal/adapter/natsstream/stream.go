@@ -21,8 +21,14 @@ import (
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
+	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/marcoscorrea/ndovu/backend/internal/domain"
+	"github.com/marcoscorrea/ndovu/backend/internal/platform"
 )
 
 const (
@@ -89,16 +95,29 @@ func NewPublisher(js jetstream.JetStream) *Publisher {
 }
 
 // Publish serializa o lote e publica com Msg-Id determinístico (dedup de retry).
-func (p *Publisher) Publish(ctx context.Context, batch domain.IngestBatch) error {
+// O contexto de trace vai em header (traceparent), fora do payload — o hash do
+// Msg-Id continua o mesmo para o mesmo lote.
+func (p *Publisher) Publish(ctx context.Context, batch domain.IngestBatch) (err error) {
+	subject := subjectFor(batch.Session.App)
+	ctx, span := platform.Tracer().Start(ctx, "send "+subjectPrefix+"*",
+		trace.WithSpanKind(trace.SpanKindProducer),
+		trace.WithAttributes(
+			semconv.MessagingSystemKey.String("nats"),
+			semconv.MessagingDestinationName(subject),
+			semconv.MessagingBatchMessageCount(len(batch.Events)),
+		),
+	)
+	defer func() { platform.EndSpan(span, err) }()
+
 	payload, err := json.Marshal(envelope{V: 1, Batch: batch})
 	if err != nil {
 		return fmt.Errorf("serializando lote: %w", err)
 	}
 	sum := sha256.Sum256(payload)
-	_, err = p.js.Publish(ctx, subjectFor(batch.Session.App), payload,
-		jetstream.WithMsgID(hex.EncodeToString(sum[:])),
-	)
-	if err != nil {
+	msg := nats.NewMsg(subject)
+	msg.Data = payload
+	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(msg.Header))
+	if _, err = p.js.PublishMsg(ctx, msg, jetstream.WithMsgID(hex.EncodeToString(sum[:]))); err != nil {
 		return fmt.Errorf("publicando no stream: %w", err)
 	}
 	return nil
@@ -115,6 +134,7 @@ func (p *Publisher) DeadLetter(ctx context.Context, batch domain.IngestBatch, re
 	msg := nats.NewMsg(dlqPrefix + subjectToken(batch.Session.App))
 	msg.Data = payload
 	msg.Header.Set("Ndovu-Dlq-Reason", reason)
+	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(msg.Header))
 	if _, err := p.js.PublishMsg(ctx, msg); err != nil {
 		return fmt.Errorf("publicando na DLQ: %w", err)
 	}
@@ -189,6 +209,7 @@ func (c *Consumer) Run(ctx context.Context, handle func(ctx context.Context, bat
 
 		var pending []jetstream.Msg
 		var batches []domain.IngestBatch
+		var links []trace.Link
 		for msg := range msgs.Messages() {
 			var env envelope
 			if err := json.Unmarshal(msg.Data(), &env); err != nil {
@@ -199,6 +220,9 @@ func (c *Consumer) Run(ctx context.Context, handle func(ctx context.Context, bat
 			}
 			pending = append(pending, msg)
 			batches = append(batches, env.Batch)
+			if link, ok := linkFrom(msg); ok {
+				links = append(links, link)
+			}
 		}
 		if msgs.Error() != nil && len(batches) == 0 {
 			continue
@@ -207,7 +231,7 @@ func (c *Consumer) Run(ctx context.Context, handle func(ctx context.Context, bat
 			continue
 		}
 
-		if err := handle(ctx, batches); err != nil {
+		if err := c.process(ctx, batches, links, handle); err != nil {
 			// Falha transitória de persistência: nak para reentrega (at-least-once).
 			c.logger.Error("falha ao processar lotes; reentregando", "batches", len(batches), "err", err)
 			for _, msg := range pending {
@@ -224,4 +248,41 @@ func (c *Consumer) Run(ctx context.Context, handle func(ctx context.Context, bat
 			_ = msg.Ack()
 		}
 	}
+}
+
+// process entrega o lote ao handler dentro de um span CONSUMER. Um fetch junta
+// mensagens de requests (e traces) diferentes, então o span é raiz própria com
+// um link para cada trace de origem — o padrão OTel para consumo em lote.
+func (c *Consumer) process(ctx context.Context, batches []domain.IngestBatch, links []trace.Link, handle func(context.Context, []domain.IngestBatch) error) (err error) {
+	events := 0
+	for _, b := range batches {
+		events += len(b.Events)
+	}
+	ctx, span := platform.Tracer().Start(ctx, "process "+subjectPrefix+"*",
+		trace.WithSpanKind(trace.SpanKindConsumer),
+		trace.WithNewRoot(),
+		trace.WithLinks(links...),
+		trace.WithAttributes(
+			semconv.MessagingSystemKey.String("nats"),
+			semconv.MessagingConsumerGroupName(ConsumerName),
+			semconv.MessagingBatchMessageCount(len(batches)),
+			attribute.Int("ndovu.events", events),
+		),
+	)
+	defer func() { platform.EndSpan(span, err) }()
+	return handle(ctx, batches)
+}
+
+// linkFrom extrai o contexto de trace que a API gravou no header da mensagem.
+func linkFrom(msg jetstream.Msg) (trace.Link, bool) {
+	headers := msg.Headers()
+	if headers == nil {
+		return trace.Link{}, false
+	}
+	ctx := otel.GetTextMapPropagator().Extract(context.Background(), propagation.HeaderCarrier(headers))
+	sc := trace.SpanContextFromContext(ctx)
+	if !sc.IsValid() {
+		return trace.Link{}, false
+	}
+	return trace.Link{SpanContext: sc}, true
 }

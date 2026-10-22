@@ -39,7 +39,21 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	repo, err := clickhouse.Connect(ctx, clickhouse.Options{
+	// Tracing OTel do próprio Ndovu — ligado só com OTEL_EXPORTER_OTLP_ENDPOINT.
+	shutdownTracing, err := platform.SetupTracing(ctx, "ndovu-writer", platform.BuildVersion(), logger)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := shutdownTracing(context.Background()); err != nil {
+			logger.Warn("encerrando tracing", "err", err)
+		}
+	}()
+
+	// Boot num trace só; ver o comentário equivalente em cmd/api/main.go.
+	bootCtx, bootSpan := platform.Tracer().Start(ctx, "startup")
+
+	repo, err := clickhouse.Connect(bootCtx, clickhouse.Options{
 		Addr:     cfg.ClickHouseAddr,
 		Database: cfg.ClickHouseDB,
 		Username: cfg.ClickHouseUser,
@@ -49,7 +63,7 @@ func run() error {
 		return fmt.Errorf("conectando ao ClickHouse: %w", err)
 	}
 	defer repo.Close()
-	if err := repo.EnsureSchema(ctx); err != nil {
+	if err := repo.EnsureSchema(bootCtx); err != nil {
 		return err
 	}
 
@@ -86,7 +100,7 @@ func run() error {
 	// Sampling adaptativo (Sprint G): filtra lotes antes de persistir.
 	// Requer control plane. Se estiver fora, WriteService segue sem sampling
 	// (aceita tudo — falha aberta é preferível a bloquear ingestão).
-	if samplingStore, err := ctlpostgres.Connect(ctx, cfg.PostgresURL, logger); err == nil {
+	if samplingStore, err := ctlpostgres.Connect(bootCtx, cfg.PostgresURL, logger); err == nil {
 		defer samplingStore.Close()
 		samplingSvc := usecase.NewSamplingService(samplingStore, nil, logger)
 		go samplingSvc.Run(ctx, cfg.SamplingRefresh)
@@ -98,7 +112,7 @@ func run() error {
 	// Avaliador de alertas + digest semanal — rodam no writer para não duplicar
 	// entre réplicas da API. Se não conseguir conectar no control plane,
 	// seguimos sem esses dois (o writer continua persistindo eventos).
-	ctl, err := ctlpostgres.Connect(ctx, cfg.PostgresURL, logger)
+	ctl, err := ctlpostgres.Connect(bootCtx, cfg.PostgresURL, logger)
 	if err != nil {
 		logger.Warn("control plane indisponível — alertas/digest desligados", "err", err)
 	} else {
@@ -126,6 +140,8 @@ func run() error {
 		}, logger)
 		go digestSvc.Run(ctx, cfg.DigestTickEvery)
 	}
+
+	bootSpan.End()
 
 	logger.Info("ndovu-writer consumindo",
 		"backend", cfg.StreamBackend,

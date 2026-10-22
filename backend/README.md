@@ -62,7 +62,11 @@ go run ./cmd/api        # :8080
 go run ./cmd/writer     # outro terminal
 ```
 
-Os defaults do `config.go` casam com o compose. Para gerar carga de exemplo,
+Os defaults do `config.go` casam com o compose.
+
+Tracing do próprio Ndovu (OpenTelemetry, desligado por padrão): suba o Jaeger
+com `--profile otel` e exporte `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`
+antes do `go run`. UI em `http://localhost:16686`. Ver `docs/ARQUITETURA.md` §18.4. Para gerar carga de exemplo,
 use o `seed` do repositório `ndovu-sdk`.
 
 O buffer de ingestão é agnóstico: escolha o backend por `NDOVU_STREAM_BACKEND`

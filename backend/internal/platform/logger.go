@@ -7,7 +7,8 @@ import (
 	"strings"
 )
 
-// NewLogger cria o logger estruturado (JSON) da aplicação.
+// NewLogger cria o logger estruturado (JSON) da aplicação. Logs emitidos com
+// contexto carregam trace_id/span_id do span ativo (ver telemetry.go).
 func NewLogger(level string) *slog.Logger {
 	var lvl slog.Level
 	switch strings.ToLower(level) {
@@ -20,5 +21,5 @@ func NewLogger(level string) *slog.Logger {
 	default:
 		lvl = slog.LevelInfo
 	}
-	return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: lvl}))
+	return slog.New(traceHandler{slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: lvl})})
 }

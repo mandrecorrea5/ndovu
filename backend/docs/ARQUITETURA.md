@@ -1076,8 +1076,36 @@ Mailgun). O código de usecase não sabe qual está usando.
 
 ### 18.4. Traces (do próprio ndovu)
 
-Ainda não implementado — o ndovu é a ferramenta de rastreamento, mas
-não se rastreia com OpenTelemetry hoje. Item de roadmap.
+API e writer se instrumentam com OpenTelemetry (Fase 0 do OTLP,
+`docs/AVALIACAO-OTLP.md`). **Desligado por padrão**; liga com as variáveis
+padrão do OTel — as mesmas que orientamos clientes a usar:
+
+```
+OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318   # vazio = desligado
+OTEL_TRACES_SAMPLER=parentbased_traceidratio      # opcional
+OTEL_TRACES_SAMPLER_ARG=0.1
+```
+
+Local: `OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318 docker compose --profile otel up`
+sobe um Jaeger com UI em `:16686` (portas do host trocáveis por
+`JAEGER_UI_PORT`/`JAEGER_OTLP_PORT`).
+
+O que vira span (`internal/platform/telemetry.go` e `dbtrace.go`):
+
+| Origem | Span | Observação |
+|---|---|---|
+| HTTP | `GET /v1/sessions/{sessionId}` | `otelhttp`, nome pelo padrão da rota do chi. `/health` e `/metrics` fora |
+| Ingestão pública | `POST /v1/events` (raiz) | traceparent vindo do browser do cliente vira **link**, não pai — spans do Ndovu não entram no trace de terceiros |
+| Stream | `send ndovu.events.*` → `process ndovu.events.*` | contexto no header da mensagem NATS; o `process` é raiz com um link por mensagem do lote. Kafka/RabbitMQ ainda não propagam |
+| ClickHouse / Postgres | `SELECT trace_events`, `INSERT api_keys` | decorator de `driver.Conn` e `pgx.QueryTracer`; SQL parametrizado em `db.query.text` |
+| Loops do writer | `alerts.evaluate`, `anomaly.evaluate`, `digest.tick` | um trace por ciclo. Refresh de sampling não é rastreado (1 query/30s) |
+| Boot | `startup` | schema e migrações num trace só |
+
+Logs emitidos com contexto (`logger.InfoContext`) levam `trace_id`/`span_id`
+quando o trace é amostrado.
+
+Volume medido localmente: 2–3 spans por `POST /v1/events` e 2 por lote do
+writer — a 1 M eventos/dia em lotes de 20, ~150 k spans/dia do próprio Ndovu.
 
 ---
 

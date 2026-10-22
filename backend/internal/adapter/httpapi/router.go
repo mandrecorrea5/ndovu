@@ -21,6 +21,7 @@ import (
 func NewRouter(h *Handlers, cfg config.Config, verifier domain.TokenVerifier, keys *usecase.APIKeyService, apps domain.AppStore, perms domain.UserAppPermissionStore, metrics *platform.Metrics, logger *slog.Logger, openapi embed.FS) http.Handler {
 	r := chi.NewRouter()
 
+	r.Use(traceRoute)
 	r.Use(recoverer(logger))
 	r.Use(requestLogger(logger, metrics))
 	r.Use(cors(cfg.CORSOrigins))
@@ -168,7 +169,7 @@ func NewRouter(h *Handlers, cfg config.Config, verifier domain.TokenVerifier, ke
 		})
 	})
 
-	return r
+	return withTracing(r)
 }
 
 const swaggerHTML = `<!DOCTYPE html>

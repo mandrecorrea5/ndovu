@@ -62,7 +62,7 @@ func Connect(ctx context.Context, opts Options) (*Repository, error) {
 	deadline := time.Now().Add(90 * time.Second)
 	for {
 		if err = conn.Ping(ctx); err == nil {
-			return &Repository{conn: conn}, nil
+			return &Repository{conn: tracedConn{conn}}, nil
 		}
 		if time.Now().After(deadline) {
 			return nil, fmt.Errorf("clickhouse indisponível após 90s: %w", err)

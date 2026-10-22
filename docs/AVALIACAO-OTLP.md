@@ -1,6 +1,6 @@
 # Avaliação — receber OTLP no Ndovu
 
-Status: **aprovada, não iniciada** · 2026-10-21 · decisões em §6
+Status: **aprovada · Fase 0 concluída** (2026-10-22) · decisões em §6
 
 ## 1. Por que
 
@@ -155,7 +155,7 @@ Este documento propõe traces → logs e para aí até medir uso e custo.
 
 | Fase | Entrega | Tamanho |
 |---|---|---|
-| 0 | Dogfooding: Ndovu se instrumenta com OTel (item de roadmap §18.4 da ARQUITETURA) exportando para um Jaeger local — gera o tráfego de teste da Fase 1 | P |
+| 0 ✅ | Dogfooding: Ndovu se instrumenta com OTel (§18.4 da ARQUITETURA) exportando para um Jaeger local — gera o tráfego de teste da Fase 1 | P |
 | 1 | `POST /v1/traces` (HTTP, proto+JSON, gzip) · `otel_spans` · sampling por trace · flag `allow_otlp` na chave · waterfall unificado no dashboard | G |
 | 1.5 | Spans com erro viram issues · RED por rota via materialized view | M |
 | 2 | `POST /v1/logs` · `otel_logs` · busca e salto log→trace | M/G |
@@ -181,3 +181,18 @@ Este documento propõe traces → logs e para aí até medir uso e custo.
 4. **felpma é o piloto**, mas só entra **depois do waterfall unificado**
    (fim da Fase 1). Até lá o felpma segue com o SDK Node 1.4.0, que já
    correlaciona o request do servidor com o trace do browser.
+
+## 7. Resultado da Fase 0 (2026-10-22)
+
+- API e writer exportam traces OTLP/HTTP; detalhes em ARQUITETURA §18.4.
+- Verificado de ponta a ponta contra Jaeger 2.22: ingestão → stream → writer
+  → ClickHouse aparece como dois traces ligados por link; consulta autenticada
+  continua o trace recebido.
+- Volume do próprio Ndovu: 2–3 spans por request de ingestão, 2 por lote do
+  writer. Dá a primeira referência para a cota da §6: o Ndovu sozinho, a 1 M
+  eventos/dia, gera ~150 k spans/dia — bem abaixo dos 500 k de cota inicial.
+- Para a Fase 1: trocar o destino de Jaeger para o próprio Ndovu é mudar
+  `OTEL_EXPORTER_OTLP_ENDPOINT`. O Ndovu passa a ser o primeiro cliente do
+  receptor OTLP.
+- Pendente: medir bytes/span no ClickHouse (só possível com `otel_spans`, Fase 1);
+  propagação nos backends Kafka e RabbitMQ do stream.
