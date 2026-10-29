@@ -1,0 +1,183 @@
+name: Release
+
+# Publica as imagens no GHCR e, opcionalmente, implanta no VPS.
+#
+# Manual de propósito: a API roda migrations no boot, então um merge que quebre
+# migration não deve chegar em produção sem alguém olhar. Rollback = rodar este
+# workflow de novo com a tag anterior.
+#
+# Secrets necessários (Settings → Secrets and variables → Actions):
+#   VPS_HOST      IP ou hostname do servidor
+#   VPS_USER      usuário do SSH (root hoje; vira `deploy` quando o hardening entrar)
+#   VPS_SSH_KEY   chave privada ed25519 (conteúdo de ~/.ssh/id_ed25519_vps)
+#
+# Pacotes são públicos: o servidor faz `docker compose pull` sem login no GHCR.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag a publicar (padrão: SHA curto do commit)"
+        required: false
+        type: string
+      deploy:
+        description: "Implantar no VPS depois de publicar"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  packages: write
+
+# Dois releases ao mesmo tempo competiriam pelo mesmo stack no servidor.
+concurrency:
+  group: release-ndovu
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  OWNER: mandrecorrea5
+
+jobs:
+  # Gate: não publica imagem de código que não passa nos testes.
+  test:
+    name: Testes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26" # go.mod declara go 1.26.0
+          cache-dependency-path: backend/go.sum
+
+      - name: Backend (vet + testes)
+        working-directory: backend
+        run: |
+          go vet ./...
+          go test -race -count=1 ./...
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Dashboard (typecheck + build)
+        working-directory: dashboard
+        run: |
+          npm ci --no-audit --no-fund
+          npm run typecheck
+          npm run build
+
+  images:
+    name: Publicar imagens
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Definir tag
+        id: meta
+        run: |
+          tag="${{ inputs.tag }}"
+          if [ -z "$tag" ]; then tag="${GITHUB_SHA::12}"; fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "publicando com tag: $tag"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # api e writer saem do MESMO Dockerfile (o writer só troca o entrypoint),
+      # então é uma imagem só — publicar `ndovu-writer` duplicaria o artefato.
+      - name: ndovu-api
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          platforms: linux/amd64 # o VPS é x86_64
+          push: true
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/ndovu-api:${{ steps.meta.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/ndovu-api:sha-${{ github.sha }}
+
+      - name: ndovu-dashboard
+        uses: docker/build-push-action@v6
+        with:
+          context: dashboard
+          platforms: linux/amd64
+          push: true
+          # NEXT_PUBLIC_* é embutido no bundle: a imagem fica amarrada a este
+          # domínio. Staging com outro domínio precisa de outra tag/imagem.
+          build-args: |
+            NEXT_PUBLIC_NDOVU_API=https://api.ndovu.solutions
+          cache-from: type=gha,scope=dashboard
+          cache-to: type=gha,mode=max,scope=dashboard
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/ndovu-dashboard:${{ steps.meta.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/ndovu-dashboard:sha-${{ github.sha }}
+
+  deploy:
+    name: Implantar no VPS
+    needs: images
+    if: ${{ inputs.deploy }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: pull + up
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -eu
+            cd /srv/apps/ndovu
+            # Variável exportada vence o .env do compose: é o botão de rollback.
+            export NDOVU_TAG="${{ needs.images.outputs.tag }}"
+            docker compose \
+              -f docker-compose.yml \
+              -f docker-compose.prod.yml \
+              -f docker-compose.ingress.yml \
+              -f docker-compose.release.yml \
+              pull
+            docker compose \
+              -f docker-compose.yml \
+              -f docker-compose.prod.yml \
+              -f docker-compose.ingress.yml \
+              -f docker-compose.release.yml \
+              up -d --remove-orphans
+            # Imagens antigas ocupam disco rápido; mantém 7 dias para rollback.
+            docker image prune -f --filter "until=168h"
+
+  smoke:
+    name: Smoke test
+    needs: [images, deploy]
+    if: ${{ inputs.deploy }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Três hostnames respondem
+        run: |
+          set -eu
+          for url in \
+            https://ndovu.solutions/login \
+            https://api.ndovu.solutions/health \
+            https://otlp.ndovu.solutions/health
+          do
+            code=$(curl -s -o /dev/null -w '%{http_code}' \
+              --retry 10 --retry-delay 3 --retry-all-errors --max-time 15 "$url")
+            echo "$url → $code"
+            case "$code" in
+              2*|3*) ;;
+              *) echo "smoke falhou em $url (HTTP $code)" >&2; exit 1 ;;
+            esac
+          done

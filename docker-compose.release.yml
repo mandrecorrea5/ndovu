@@ -1,0 +1,27 @@
+# ============================================================================
+# Overlay de release: roda as imagens publicadas no GHCR em vez de buildar
+# no servidor.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+#                  -f docker-compose.ingress.yml -f docker-compose.release.yml up -d
+#
+# Sem este arquivo, o compose de prod builda `backend/` e `dashboard/` na
+# própria VPS — o que funcionou no primeiro deploy, mas gasta CPU do servidor,
+# depende de toolchain local e torna rollback uma recompilação.
+#
+# `build: !reset null` é o que remove o build herdado dos arquivos anteriores.
+# Note que `ndovu-api` serve TAMBÉM o writer: mesma imagem, entrypoint trocado.
+# ============================================================================
+
+services:
+  api:
+    image: ghcr.io/mandrecorrea5/ndovu-api:${NDOVU_TAG:?defina NDOVU_TAG}
+    build: !reset null
+
+  writer:
+    image: ghcr.io/mandrecorrea5/ndovu-api:${NDOVU_TAG:?defina NDOVU_TAG}
+    build: !reset null
+
+  dashboard:
+    image: ghcr.io/mandrecorrea5/ndovu-dashboard:${NDOVU_TAG:?defina NDOVU_TAG}
+    build: !reset null

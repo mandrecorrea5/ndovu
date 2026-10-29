@@ -1,0 +1,43 @@
+# ============================================================================
+# Overlay: expõe o ndovu pelo ingress compartilhado desta VPS, no lugar do
+# Caddy próprio + Cloudflare Tunnel do docker-compose.prod.yml.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+#                  -f docker-compose.ingress.yml up -d
+#
+# Por que este arquivo existe: o prod.yml termina o TLS na Cloudflare e deixa
+# o roteamento num Caddy interno alimentado por {$NDOVU_*_DOMAIN}. Aqui o
+# `ingress-caddy` (infra/stacks/ingress) é o único dono das 80/443 e emite
+# Let's Encrypt via HTTP-01 — logo, domínios literais no snippet e nenhum
+# túnel no caminho.
+#
+# O que muda:
+#   - caddy e cloudflared não sobem (profile "disabled");
+#   - api e dashboard entram na network externa `ingress` para o Caddy
+#     resolvê-los por nome de container;
+#   - o roteamento (app, api, otlp, /metrics) vive em
+#     infra/stacks/ingress/conf.d/ndovu.caddy
+# ============================================================================
+
+services:
+  # Substituídos pelo ingress-caddy do host.
+  caddy:
+    profiles: ["disabled"]
+  cloudflared:
+    profiles: ["disabled"]
+
+  # O ingress resolve por nome de serviço; quem não está na network não é
+  # alcançável pelo proxy.
+  api:
+    networks:
+      default: {}
+      ingress: {}
+
+  dashboard:
+    networks:
+      default: {}
+      ingress: {}
+
+networks:
+  ingress:
+    external: true

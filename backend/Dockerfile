@@ -1,6 +1,8 @@
 # --- build ---
-# 1.25+ exigido pelo minio-go/v7 (bump da dep na Fase 3 sprint H).
-FROM golang:1.25-alpine AS build
+# go.mod declara `go 1.26.0`: a imagem precisa ser >= isso, senão o build morre
+# com "go.mod requires go >= 1.26.0 (running go 1.25.x; GOTOOLCHAIN=local)".
+# 1.25+ também é exigido pelo minio-go/v7 (bump da dep na Fase 3 sprint H).
+FROM golang:1.26-alpine AS build
 WORKDIR /src
 
 # Cache de dependências: go.sum é gerado aqui na primeira build
