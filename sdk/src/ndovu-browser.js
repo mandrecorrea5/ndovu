@@ -20,7 +20,7 @@
  *   ndovu.instrumentFetch(); // captura fetch() automaticamente
  */
 
-const SDK_VERSION = '1.3.1';
+const SDK_VERSION = '1.4.0';
 const REDACT_KEYS = /pass(word)?|senha|token|secret|authorization|cvv|card|cart[aã]o/i;
 const BREADCRUMB_LIMIT = 30;
 // 401/403/400/413 são erro de configuração ou de contrato: reenviar não
@@ -78,7 +78,9 @@ export function createNdovu({
   captureGlobals = true,
   captureWebVitals = true,
   breadcrumbs = true,
-  captureSnapshots = true, // envia snapshot do DOM em cada error()
+  // true/'error' = snapshot no error(); 'screen' = também em cada pageView();
+  // false/'off' = desliga.
+  captureSnapshots = true,
   release,
 }) {
   if (!endpoint || !apiKey || !app) {
@@ -97,6 +99,8 @@ export function createNdovu({
 
   let queue = [];
   let timer = null;
+  const snapshotsOnError = captureSnapshots !== false && captureSnapshots !== 'off';
+  const snapshotsOnScreen = captureSnapshots === 'screen';
   // Ring buffer local — anexado como metadata.breadcrumbs em cada erro enviado
   const crumbs = [];
   // Último eventId gerado — widget de feedback usa pra amarrar ao evento problemático.
@@ -200,13 +204,17 @@ export function createNdovu({
     }
     if (queue.length >= maxBatch) void flush();
     schedule();
+    return enriched.eventId;
   }
 
   const sdk = {
     sessionId,
 
     pageView(screen, extra = {}) {
-      push({ type: 'page_view', name: `tela_${screen}`, screen, ...extra });
+      const eventId = push({ type: 'page_view', name: `tela_${screen}`, screen, ...extra });
+      if (snapshotsOnScreen && typeof document !== 'undefined') {
+        scheduleScreenSnapshot(endpoint, apiKey, app, sessionId, eventId);
+      }
     },
 
     action(name, { feature, screen, metadata } = {}) {
@@ -228,7 +236,7 @@ export function createNdovu({
         error: { code, message, body: redact(body) },
       });
       // Snapshot é fire-and-forget: se falhar, não bloqueia o evento.
-      if (captureSnapshots && typeof document !== 'undefined') {
+      if (snapshotsOnError && typeof document !== 'undefined') {
         void sendSnapshot(endpoint, apiKey, app, sessionId, eventId);
       }
     },
@@ -708,6 +716,19 @@ function captureDOM() {
   return '<!doctype html>' + clone.outerHTML;
 }
 
+/**
+ * Snapshot de tela no pageView: espera o próximo frame para o router já ter
+ * pintado a tela nova e então monta/envia o DOM. Fire-and-forget, como no erro.
+ */
+function scheduleScreenSnapshot(endpoint, apiKey, app, sessionId, eventId) {
+  const send = () => void sendSnapshot(endpoint, apiKey, app, sessionId, eventId);
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(send);
+  } else {
+    setTimeout(send, 0);
+  }
+}
+
 async function sendSnapshot(endpoint, apiKey, app, sessionId, eventId) {
   try {
     const html = captureDOM();
@@ -722,9 +743,13 @@ async function sendSnapshot(endpoint, apiKey, app, sessionId, eventId) {
       viewportH: window.innerHeight,
       takenAt: new Date().toISOString(),
     });
+    // keepalive tem teto de ~64 KB no browser. Snapshot de app real costuma
+    // passar disso; nesse caso usa fetch normal (o evento já foi enfileirado,
+    // então perder o snapshot no unload é aceitável).
+    const keepalive = new TextEncoder().encode(body).length <= 60_000;
     const res = await fetch(`${endpoint.replace(/\/$/, '')}/v1/snapshots`, {
       method: 'POST',
-      keepalive: true,
+      keepalive,
       headers: { 'Content-Type': 'application/json', 'X-Api-Key': apiKey },
       body,
     });

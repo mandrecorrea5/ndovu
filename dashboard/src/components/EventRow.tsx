@@ -109,11 +109,9 @@ export function EventRow({ event, showSessionLink = true }: { event: TraceEvent;
                 </p>
               ) : null}
             </div>
-            {event.type === 'error' ? (
-              <>
-                <ResolvedStack event={event} />
-                <SnapshotViewer eventId={event.eventId} />
-              </>
+            {event.type === 'error' ? <ResolvedStack event={event} /> : null}
+            {event.type === 'error' || event.type === 'page_view' ? (
+              <SnapshotViewer eventId={event.eventId} />
             ) : null}
             <div className="grid gap-x-6 lg:grid-cols-2">
               <JsonView title="Request body" data={event.http?.requestBody} />

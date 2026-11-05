@@ -431,6 +431,11 @@ Com `captureSnapshots: true` (default), **todo** `sdk.error()` dispara
 uma captura do DOM. Quando o admin abrir a issue no dashboard, vê a
 foto exata da tela.
 
+Para ter uma foto de **cada tela**, use `captureSnapshots: 'screen'`:
+cada `pageView()` também gera um snapshot, no mesmo `eventId` do evento.
+É opt-in — um upload por navegação (5-50 KB gzip); ative com
+consentimento/LGPD e `data-ndovu-mask` nos pontos com PII.
+
 ---
 
 ## 6. Padrão D — Rastrear chamadas HTTP (http_request)

@@ -862,8 +862,9 @@ janela mínima de detecção. Não faz sentido detectar em segundos
 
 ### 14.1. Escopo do MVP
 
-Snapshot único do DOM no momento em que `sdk.error()` é chamado. Não é
-gravação contínua (rrweb) — evolução prevista.
+Snapshot único do DOM no momento em que `sdk.error()` é chamado. Com
+`captureSnapshots: 'screen'` (opt-in), o mesmo acontece a cada
+`sdk.pageView()`. Não é gravação contínua (rrweb) — evolução prevista.
 
 ### 14.2. Fluxo
 
@@ -879,6 +880,9 @@ error() é chamado no SDK
                 ├─▶ salva metadata em Postgres (session_snapshots)
                 └─▶ salva blob em S3 / MinIO (key: {app}/{yyyy-mm-dd}/{eventId}.html.gz)
 ```
+
+No modo `captureSnapshots: 'screen'`, o mesmo fluxo roda no `pageView()`,
+com o `eventId` do `page_view`.
 
 ### 14.3. Sanitização (feita no SDK, antes de sair do browser)
 

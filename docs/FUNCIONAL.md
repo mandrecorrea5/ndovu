@@ -402,7 +402,7 @@ capturados, com filtros combináveis.
   - Payload de request/response (formatado, JSON collapsível).
   - Metadata completa.
   - Stack trace (se erro).
-  - Snapshot do DOM (se erro com snapshot).
+  - Snapshot do DOM (se o evento `error`/`page_view` tiver snapshot).
   - Trace ID + Span ID (correlação com backend via W3C traceparent).
 
 **Casos de uso:**
@@ -444,13 +444,15 @@ Ao abrir uma sessão, a tela mostra a **jornada completa** do usuário:
 
 ## 12. Módulo: Session replay
 
-**O que é:** captura visual do DOM no momento do erro, exibida em iframe
-sandbox no dashboard. Não é vídeo contínuo (MVP) — é foto do estado no
-momento exato.
+**O que é:** captura visual do DOM no momento do erro (e, no modo opt-in
+`captureSnapshots: 'screen'`, também a cada `pageView()`), exibida em
+iframe sandbox no dashboard. Não é vídeo contínuo (MVP) — é foto do
+estado no momento exato.
 
 **Como aparece:**
 - No detalhe da issue: botão "Ver DOM no momento do erro".
-- No detalhe do evento no explorador: mesma opção.
+- No detalhe do evento no explorador, na sessão e no trace: mesma opção
+  para eventos `error` e `page_view` que tenham snapshot.
 
 **O que mostra:**
 - HTML sanitizado (scripts removidos, `<iframe>` removidos).
@@ -460,8 +462,9 @@ momento exato.
   `***`.
 - Resolução original (viewport width/height gravados).
 
-**Limitação atual:** é snapshot único, não sequência. Evolução prevista
-para gravação contínua tipo vídeo (rrweb).
+**Limitação atual:** é uma foto por evento, não uma sequência. O modo
+`'screen'` gera uma foto por tela, mas não reproduz as mutações entre
+elas; evolução prevista para gravação contínua tipo vídeo (rrweb).
 
 ---
 

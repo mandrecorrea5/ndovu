@@ -340,7 +340,7 @@ const ndovu = createNdovu({
   captureGlobals: true,      // window.onerror, unhandledrejection, console.error
   captureWebVitals: true,    // LCP, CLS, INP, FID, TTFB, FCP
   breadcrumbs: true,         // ring buffer de últimos 30 eventos
-  captureSnapshots: true,    // snapshot do DOM em cada error()
+  captureSnapshots: true,    // true/'error' = error(); 'screen' = também pageView()
 });
 ```
 
@@ -1676,7 +1676,12 @@ curl -sX POST http://localhost:18081/v1/auth/login \
 
 ### 24.4. Snapshot não aparece na issue
 
-- Verifique se `captureSnapshots: true` no SDK.
+- Verifique `captureSnapshots`: `true`/`'error'` cobre só `error()`;
+  `'screen'` cobre também `pageView()`.
+- O snapshot só aparece em evento `error` ou `page_view` — spans OTLP e
+  outros tipos não têm tela.
+- Snapshot grande usa `fetch` sem `keepalive` (o teto do keepalive é
+  ~64 KB); se o upload falhar, o SDK emite `console.warn` no browser.
 - Verifique se MinIO/S3 está saudável:
   ```bash
   docker logs ndovu-minio-1 --tail 20

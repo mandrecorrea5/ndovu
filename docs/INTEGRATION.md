@@ -480,7 +480,7 @@ export function createNdovu(config: {
   captureGlobals?: boolean;
   captureWebVitals?: boolean;
   breadcrumbs?: boolean;
-  captureSnapshots?: boolean;
+  captureSnapshots?: boolean | 'error' | 'screen' | 'off';
   flushIntervalMs?: number;
   maxBatch?: number;
   sessionAttributes?: Record<string, any>;
@@ -826,7 +826,7 @@ Reference completa dos parâmetros que `createNdovu({...})` aceita:
 | `captureGlobals` | boolean | `true` | Instala handlers: `window.onerror`, `unhandledrejection`, `console.error` |
 | `captureWebVitals` | boolean | `true` | Coleta LCP, CLS, INP, FID, TTFB, FCP |
 | `breadcrumbs` | boolean | `true` | Mantém ring buffer dos últimos 30 eventos; anexa em cada erro |
-| `captureSnapshots` | boolean | `true` | Captura DOM (session replay) em cada `error()` |
+| `captureSnapshots` | boolean \| `'error'` \| `'screen'` \| `'off'` | `true` | `true`/`'error'`: DOM em cada `error()`. `'screen'`: também em cada `pageView()`. `false`/`'off'`: desliga |
 
 ### Casos comuns
 
@@ -854,6 +854,20 @@ createNdovu({
 });
 // Não chame pageView() nem action() em código.
 ```
+
+**Screenshot de cada tela** (opt-in, cuidado com volume/LGPD):
+
+```javascript
+createNdovu({
+  ...,
+  captureSnapshots: 'screen', // error() + cada pageView()
+});
+```
+
+Cada `pageView()` vira um `POST /v1/snapshots` (HTML cru, tipicamente
+30-500 KB; 5-50 KB já gzipado no bucket). No dashboard, o replay aparece
+no evento, na issue, na sessão e no trace. Para voltar a capturar só
+erro, use `true`; para desligar, `false`.
 
 **Batch mais agressivo** (aplicações críticas):
 

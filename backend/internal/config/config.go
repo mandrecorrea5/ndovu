@@ -288,6 +288,13 @@ func validate(cfg Config, component string) error {
 		require(cfg.S3Endpoint != "" && cfg.S3AccessKey != "" && cfg.S3SecretKey != "" &&
 			cfg.SnapshotBucket != "" && cfg.S3UseSSL,
 			"NDOVU_S3_ENDPOINT, NDOVU_S3_ACCESS_KEY, NDOVU_S3_SECRET_KEY, NDOVU_S3_USE_SSL=true e NDOVU_SNAPSHOT_BUCKET")
+		if cfg.S3Endpoint != "" {
+			// O minio-go aceita host puro ou https://host, mas falha se o
+			// endpoint trouxer path/bucket. Sem esta checagem a API sobe,
+			// desliga os snapshots em silêncio e só loga um warning.
+			require(validS3Endpoint(cfg.S3Endpoint, cfg.S3UseSSL),
+				"NDOVU_S3_ENDPOINT sem path/bucket (host ou https://host)")
+		}
 		// Chave de cifra da sessão (BFF do dashboard). A API não usa, mas a
 		// presença evita subir produção sem o segredo do cookie httpOnly.
 		require(len(cfg.SessionEncKey) >= 32,
@@ -297,6 +304,37 @@ func validate(cfg Config, component string) error {
 		return fmt.Errorf("configuração de produção inválida: %s", strings.Join(missing, "; "))
 	}
 	return nil
+}
+
+// validS3Endpoint aceita host puro (host[:port]) ou URL http(s)://host,
+// mas não path/bucket — é o formato que o minio-go aceita. O esquema, quando
+// presente, precisa concordar com secure (NDOVU_S3_USE_SSL).
+func validS3Endpoint(endpoint string, secure bool) bool {
+	if endpoint == "" {
+		return false
+	}
+	raw := endpoint
+	if !strings.Contains(raw, "://") {
+		scheme := "https"
+		if !secure {
+			scheme = "http"
+		}
+		raw = scheme + "://" + raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" || u.User != nil {
+		return false
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return false
+	}
+	if (u.Scheme == "https") != secure {
+		return false
+	}
+	if u.RawQuery != "" || u.Fragment != "" {
+		return false
+	}
+	return u.Path == "" || u.Path == "/"
 }
 
 // splitCSV divide "a@x.com, b@y.com" em []string sem vazios/espaços.

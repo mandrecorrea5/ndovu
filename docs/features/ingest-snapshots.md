@@ -2,15 +2,27 @@
 
 ## Para que serve
 
-Captura uma **foto do HTML** exatamente no momento em que um erro
-aconteceu no frontend, para que o dev abra a issue no dashboard e
-veja **o que o usuário via na tela**. É o "session replay MVP" do
-Ndovu — não grava vídeo, grava uma foto do DOM (rápido, barato,
+Captura uma **foto do HTML** no momento de um erro (ou de cada
+`pageView()`, no modo `'screen'`), para que o dev abra a issue/evento
+no dashboard e veja **o que o usuário via na tela**. É o "session replay
+MVP" do Ndovu — não grava vídeo, grava uma foto do DOM (rápido, barato,
 funciona sem instrumentação extra).
 
-Habilitado automaticamente pelo SDK browser com
-`captureSnapshots: true` (default): cada `error()` dispara o upload
-em fire-and-forget.
+Habilitado pelo SDK browser com `captureSnapshots: true` (default):
+cada `error()` dispara o upload em fire-and-forget. Com
+`captureSnapshots: 'screen'`, cada `pageView()` também gera uma foto —
+uma por tela visitada, além dos erros.
+
+| Valor | O que captura |
+|---|---|
+| `true` / `'error'` (default) | Só `error()` |
+| `'screen'` | `error()` + cada `pageView()` (opt-in) |
+| `false` / `'off'` | Nada |
+
+O modo `'screen'` é opt-in por app: é um upload por navegação (HTML cru,
+tipicamente 30-500 KB; 5-50 KB depois do gzip no bucket), então pesa no
+volume e no custo de storage. Ative com consentimento/LGPD e marque os
+pontos com PII usando `data-ndovu-mask`.
 
 ## Onde fica
 
@@ -40,10 +52,12 @@ const ndovu = createNdovu({
   endpoint: 'https://ndovu.exemplo.com',
   apiKey: '<chave>',
   app: 'portal-cliente',
-  captureSnapshots: true, // default
+  captureSnapshots: 'screen', // erro + cada pageView (opt-in)
 });
-ndovu.error('falha_pagamento', { code: 'GATEWAY_TIMEOUT', message: '...' });
+ndovu.pageView('/checkout');
 // SDK envia POST /v1/events E POST /v1/snapshots com o mesmo eventId
+ndovu.error('falha_pagamento', { code: 'GATEWAY_TIMEOUT', message: '...' });
+// No modo 'screen', o erro também gera snapshot
 ```
 
 Marcar elementos com PII fora de inputs (o snapshot mascara
@@ -84,7 +98,7 @@ open snapshot.html
 ## O que acontece
 
 1. `apiKeyAuth` valida chave + rate limit (mesmo caminho da ingestão
-   de eventos).
+   de eventos). O `eventId` pode ser de um `error` ou de um `pageView`.
 2. Cross-tenant guard: `req.App` precisa bater com `key.App` → `400`
    se diverge.
 3. Se `SnapshotService` está desligado (sem `NDOVU_S3_ENDPOINT`),
@@ -115,7 +129,8 @@ Sanitização do lado do SDK (feita **antes** de enviar):
   por `***`.
 
 Tamanho típico: **5-50 KB gzipped** (HTML de app real varia
-30-500 KB descomprimido).
+30-500 KB descomprimido). No modo `'screen'`, multiplique pelo número de
+telas visitadas — é o principal motivo para ele ser opt-in.
 
 ## Como demonstrar
 
@@ -150,9 +165,9 @@ Roteiro de 60s:
 - Bucket criado (`NDOVU_SNAPSHOT_BUCKET`; MinIO local cria via
   `docker-compose` do repo).
 - Postgres com a migração de `session_snapshots`.
-- Evento `error` já ingerido: o `eventId` do snapshot amarra a foto
-  ao evento — sem o evento correspondente, o dashboard não sabe
-  onde exibir.
+- Evento correspondente (`error` ou `page_view`) já ingerido: o
+  `eventId` do snapshot amarra a foto ao evento — sem o evento, o
+  dashboard não sabe onde exibir.
 
 ## Perguntas frequentes
 
@@ -161,7 +176,15 @@ Roteiro de 60s:
   típico de 5-10x, cabe em blob normal.
 - **"Como desligo em produção?"** Duas formas: (a) deixe
   `NDOVU_S3_ENDPOINT` vazio — o backend responde `503` e o SDK
-  ignora; (b) no SDK, `captureSnapshots: false`.
+  ignora; (b) no SDK, `captureSnapshots: false` (ou `'off'`). Para
+  manter só o replay de erro e cortar o de tela, volte para `true`.
+- **"Isso é o replay contínuo (rrweb)?"** Não. É uma foto do DOM por
+  `pageView()` (e por erro), sem gravação de vídeo nem sequência de
+  mutações. O replay contínuo continua no roadmap.
+- **"Tela grande não envia o snapshot?"** O `fetch` com `keepalive` tem
+  teto de ~64 KB no browser. Acima disso o SDK envia sem `keepalive`
+  (o backend aceita até 20 MB de HTML cru); se o upload falhar, o
+  browser mostra `console.warn` com o motivo.
 - **"Snapshot renderiza scripts do meu site?"** Não. O SDK remove
   `<script>` e o dashboard usa `<iframe sandbox>` + CSP proibindo
   scripts. É defesa em profundidade.

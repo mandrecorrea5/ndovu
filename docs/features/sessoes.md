@@ -45,6 +45,9 @@ Detalhe (`/sessions/[id]`):
 - Cada card mostra hora, tipo, nome, badge de status HTTP, duração e o
   primeiro `error.message` inline. Expande para JSON de request,
   response, error e metadata.
+- Se o evento tiver snapshot (`error`, ou `page_view` no modo
+  `captureSnapshots: 'screen'`), o replay do DOM aparece no card
+  expandido, em iframe sandbox.
 
 ## Como demonstrar
 

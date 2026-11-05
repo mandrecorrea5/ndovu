@@ -18,6 +18,35 @@ Como a correção é do lado do servidor, ela alcança quem **não** atualizou: 
 parado na 1.0.0 passa a aparecer como `1.0.0` no dado. Consulte com
 `JSONExtractString(session_attrs, 'sdkVersion')`.
 
+## 1.5.0 — 2026-11-05
+
+`@ndovu/sdk` 1.5.0 · node `1.2.0-node` (inalterado) · browser `1.4.0` ·
+react-native `1.1.0-rn` (inalterado) · go (inalterado)
+
+### Browser: snapshot de tela também em `pageView()`
+
+`captureSnapshots` ganhou o modo `'screen'`: além do snapshot no `error()`
+(comportamento antigo), cada `pageView()` envia uma foto do DOM para o
+mesmo `eventId` do evento. No dashboard o replay aparece no explorador de
+eventos, na issue, na sessão e no trace.
+
+```js
+createNdovu({
+  // ...
+  captureSnapshots: 'screen',
+});
+```
+
+Valores aceitos: `true`/`'error'` (default — só erro), `'screen'` (erro +
+tela), `false`/`'off'` (desliga). O envio é fire-and-forget no próximo
+frame, para o router já ter pintado a tela nova; falha de upload não
+afeta o evento.
+
+**Custo:** é um `POST /v1/snapshots` por navegação (HTML cru, tipicamente
+30-500 KB; 5-50 KB já gzipado no bucket). Ative por app, com
+consentimento/LGPD e `data-ndovu-mask` nos pontos com PII; para alto
+volume, prefira só o modo de erro.
+
 ## 1.4.1 — 2026-11-04
 
 `@ndovu/sdk` 1.4.1 · node `1.2.0-node` (inalterado) · browser `1.3.1` ·

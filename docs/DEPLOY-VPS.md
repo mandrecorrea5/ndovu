@@ -214,16 +214,17 @@ aws s3api create-bucket \
 
 ### Formato do endpoint
 
-Sem scheme. O adapter repassa `cfg.Endpoint` cru para o cliente MinIO
-(`internal/adapter/blobstore/minio.go:36`), que espera host puro:
+O adapter repassa `cfg.Endpoint` cru para o cliente MinIO
+(`internal/adapter/blobstore/minio.go:36`). Host puro ou URL `https://`
+funcionam (o esquema precisa concordar com `NDOVU_S3_USE_SSL=true`), mas
+**não** pode haver o nome do bucket no path — o bucket vai em
+`NDOVU_SNAPSHOT_BUCKET` (barra final é tolerada, mas prefira sem):
 
 ```
-NDOVU_S3_ENDPOINT=<acct>.s3.r2.cloudflarestorage.com     # correto
-NDOVU_S3_ENDPOINT=https://<acct>.s3.r2.cloudflarestorage.com   # quebra
+NDOVU_S3_ENDPOINT=<acct>.r2.cloudflarestorage.com                   # correto
+NDOVU_S3_ENDPOINT=https://<acct>.r2.cloudflarestorage.com           # correto (USE_SSL=true)
+NDOVU_S3_ENDPOINT=https://<acct>.r2.cloudflarestorage.com/ndovu-snapshots  # quebra
 ```
-
-Também sem barra final e sem o nome do bucket no path — o bucket vai em
-`NDOVU_SNAPSHOT_BUCKET`.
 
 ### Credencial e escopo mínimo
 
@@ -296,10 +297,11 @@ docker compose -f docker-compose.prod.yml logs api | tail -20
 
 Depois, valide o caminho completo num app ativo. Dispare um erro real pela API
 pública do SDK — `ndovu.error('teste_snapshot', { code: 'PROBE', message: '...' })`
-é o que chega a gravar snapshot, porque a captura de tela só sai desse método — e
-confirme que a sessão abre o replay renderizado. Prefira uma tela com CSS
-embutido: snapshot pequeno **não** prova nada sobre o teto de body, e o caso que
-quebrou antes foi justamente o de tela grande.
+grava snapshot no modo default. Com `captureSnapshots: 'screen'`, um
+`ndovu.pageView('/tela')` também grava. Confirme que a sessão/trace abre o
+replay renderizado. Prefira uma tela com CSS embutido e HTML grande: snapshot
+pequeno **não** prova nada sobre o teto de body, e o caso que quebrou antes foi
+justamente o de tela grande (o teto de ~64 KB do `keepalive`).
 
 Referência da feature: `docs/features/ingest-snapshots.md`.
 
@@ -309,12 +311,12 @@ Referência da feature: `docs/features/ingest-snapshots.md`.
 |---|---|
 | boot: `bucket ndovu-snapshots não existe — cria via minio-init` | Bucket não criado. `minio-init` não roda em produção. |
 | boot: `configuração de produção inválida: NDOVU_S3_ENDPOINT, ...` | Uma das cinco variáveis ausente. `NDOVU_S3_USE_SSL` vem do Compose, não do `.env`. |
-| `minio client:` ou endpoint inválido no boot | Scheme ou barra no `NDOVU_S3_ENDPOINT`, ou bucket no path. |
+| `minio client:` ou endpoint inválido no boot | Bucket no path do `NDOVU_S3_ENDPOINT` (esquema `https://` é aceito com `USE_SSL=true`). |
 | `putting snapshot ...: Access Denied` | Policy sem `s3:PutObject`, ou credencial de outro bucket. |
 | `verificando bucket ...: 404` | Nome do bucket ≠ `NDOVU_SNAPSHOT_BUCKET`, ou credencial sem `s3:ListBucket`. |
 | Boot com erro de assinatura/redirect | Região. O adapter não define `Region` explicitamente (`minio.go:36`) e depende de detecção; no R2 o esperado é `auto`. |
 | Replay sem estilo, só texto | Não é storage. O snapshot preserva os `<link href="/assets/...">` do HTML, e resolvidos contra a origem do dashboard eles dão 404. Falha conhecida do replay, sem correção no SDK. |
-| `snapshots: 0` em app que dispara `ndovu.error()` | Verifique `envelope.app` da chave vs. app dos eventos; a rota de gravação rejeita com 400 antes de tocar no storage. |
+| `snapshots: 0` em app que dispara `ndovu.error()` | Verifique `envelope.app` da chave vs. app dos eventos; a rota de gravação rejeita com 400 antes de tocar no storage. Se o browser logar `snapshot descartado`/`falha ao enviar snapshot`, veja o teto de ~64 KB do `keepalive` (o SDK já cai para fetch normal acima disso). |
 
 ## Backup e restore do PostgreSQL
 

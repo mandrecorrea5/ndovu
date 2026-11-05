@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
 import { JsonView } from '@/components/JsonView';
+import { SnapshotViewer } from '@/components/SnapshotViewer';
 import { ErrorPill, ErrorState, LoadingState, StatTile, StatusBadge, TYPE_META } from '@/components/ui';
 import { api } from '@/lib/api';
 import { fmtDateTime, fmtDuration, fmtTime } from '@/lib/time';
@@ -116,34 +117,38 @@ function TimelineItem({ event, isLast }: { event: TraceEvent; isLast: boolean })
         {failed ? '✕' : meta.icon}
       </span>
 
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className="card mb-2 w-full px-4 py-2.5 text-left transition-colors hover:bg-plane"
-      >
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span className="tabular text-xs text-muted">{fmtTime(event.timestamp)}</span>
-          <span className="text-xs text-muted">{meta.label}</span>
-          <span className="text-sm font-medium">{event.name}</span>
-          {event.error ? <ErrorPill code={event.error.code ?? 'erro'} /> : null}
-          <span className="ml-auto flex items-center gap-3">
-            {event.http?.statusCode != null ? <StatusBadge status={event.http.statusCode} /> : null}
-            {event.durationMs != null ? (
-              <span className="tabular text-xs text-ink-2">{fmtDuration(event.durationMs)}</span>
+      <div className="card mb-2 transition-colors">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="w-full px-4 py-2.5 text-left hover:bg-plane"
+        >
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="tabular text-xs text-muted">{fmtTime(event.timestamp)}</span>
+            <span className="text-xs text-muted">{meta.label}</span>
+            <span className="text-sm font-medium">{event.name}</span>
+            {event.error ? <ErrorPill code={event.error.code ?? 'erro'} /> : null}
+            <span className="ml-auto flex items-center gap-3">
+              {event.http?.statusCode != null ? (
+                <StatusBadge status={event.http.statusCode} />
+              ) : null}
+              {event.durationMs != null ? (
+                <span className="tabular text-xs text-ink-2">{fmtDuration(event.durationMs)}</span>
+              ) : null}
+              <span className="text-xs text-muted">{open ? '▾' : '▸'}</span>
+            </span>
+          </div>
+          <p className="mono mt-0.5 truncate text-xs text-ink-2">
+            {event.http?.method ? `${event.http.method} ${event.http.url}` : event.screen ?? ''}
+            {event.error?.message ? (
+              <span className="text-critical"> — {event.error.message}</span>
             ) : null}
-            <span className="text-xs text-muted">{open ? '▾' : '▸'}</span>
-          </span>
-        </div>
-        <p className="mono mt-0.5 truncate text-xs text-ink-2">
-          {event.http?.method ? `${event.http.method} ${event.http.url}` : event.screen ?? ''}
-          {event.error?.message ? (
-            <span className="text-critical"> — {event.error.message}</span>
-          ) : null}
-        </p>
+          </p>
+        </button>
 
         {open ? (
-          <div className="mt-2 border-t border-hairline pt-2" onClick={(e) => e.stopPropagation()}>
+          <div className="border-t border-hairline px-4 py-3">
             <div className="grid gap-x-8 gap-y-1 text-xs text-ink-2 sm:grid-cols-2">
               <p className="mono truncate">
                 <span className="text-muted">eventId: </span>
@@ -177,6 +182,9 @@ function TimelineItem({ event, isLast }: { event: TraceEvent; isLast: boolean })
                 </p>
               ) : null}
             </div>
+            {event.type === 'error' || event.type === 'page_view' ? (
+              <SnapshotViewer eventId={event.eventId} />
+            ) : null}
             <div className="grid gap-x-6 lg:grid-cols-2">
               <JsonView title="Request body" data={event.http?.requestBody} />
               <JsonView title="Response body" data={event.http?.responseBody} />
@@ -185,7 +193,7 @@ function TimelineItem({ event, isLast }: { event: TraceEvent; isLast: boolean })
             </div>
           </div>
         ) : null}
-      </button>
+      </div>
     </li>
   );
 }

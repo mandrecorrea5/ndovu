@@ -43,7 +43,8 @@ export const ndovu = createNdovu({
   captureGlobals: true,     // window.onerror, unhandledrejection, console.error
   captureWebVitals: true,   // LCP, CLS, INP, FID, TTFB, FCP
   breadcrumbs: true,        // ring buffer anexado a cada erro
-  captureSnapshots: true,   // POST /v1/snapshots em cada error()
+  // true (default) = snapshot só em error(); 'screen' = também em cada pageView()
+  captureSnapshots: true,
 });
 
 ndovu.instrumentFetch();               // captura todas as chamadas fetch
@@ -96,10 +97,12 @@ Em Next.js App Router — inicialize no client component raiz
   Use em app com dado sensível (financeiro, saúde) — o `redact` só mascara
   por **nome** de chave, então corpo de resposta com saldo/extrato passaria
   intacto. Sem corpo não há PII e a rota continua aparecendo em Top rotas.
-- **Snapshot on error**: `error()` gera `eventId`, envia o evento e
+- **Snapshot de tela**: `error()` gera `eventId`, envia o evento e
   dispara `sendSnapshot()` fire-and-forget para `POST /v1/snapshots`
   com HTML sanitizado (scripts removidos, inputs sensíveis mascarados,
-  elementos com `data-ndovu-mask` substituídos por `***`).
+  elementos com `data-ndovu-mask` substituídos por `***`). Com
+  `captureSnapshots: 'screen'`, o `pageView()` faz o mesmo — uma foto por
+  tela, no mesmo `eventId` do evento.
 - **Widget**: `mountFeedbackWidget()` injeta um botão flutuante +
   modal (zero dependência, estilos inline) que chama
   `sdk.feedback(message, {type, email})` → `POST /v1/feedbacks`.
@@ -152,7 +155,12 @@ pode "assinar" tráfego de outro frontend.
   `data-ndovu-mask` no elemento (`<span data-ndovu-mask>CPF</span>`).
   O snapshot substitui o `textContent` por `***`.
 - **"Posso desligar o snapshot em produção?"** Sim,
-  `captureSnapshots: false`. Nada mais precisa mudar no backend.
+  `captureSnapshots: false` (ou `'off'`). Nada mais precisa mudar no
+  backend.
+- **"Como ter screenshot de cada tela, não só de erro?"** Use
+  `captureSnapshots: 'screen'`: cada `pageView()` envia uma foto do DOM
+  no mesmo `eventId`. É opt-in porque gera um upload por navegação;
+  veja o custo em [ingest-snapshots.md](ingest-snapshots.md).
 - **"Como versiono o app no evento?"** Passe `release: '1.2.3'` no
   `createNdovu`. Vai como `session.attributes.release`; o backend
   extrai automaticamente para a coluna `release` — habilita a tela

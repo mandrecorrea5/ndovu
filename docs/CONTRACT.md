@@ -11,7 +11,7 @@ está integrado.
 Este documento cobre **três endpoints de ingestão**:
 
 - `POST /v1/events` — eventos capturados (a rota principal).
-- `POST /v1/snapshots` — HTML do DOM no momento de um erro (session replay).
+- `POST /v1/snapshots` — HTML do DOM no momento de um erro ou `pageView()` (session replay).
 - `POST /v1/feedbacks` — feedback do usuário via widget.
 
 Todos autenticam por `X-Api-Key`.
@@ -162,9 +162,10 @@ dono). Para enviar eventos de outro frontend, gere uma chave própria para ele.
 
 ## 2. `POST /v1/snapshots`
 
-Envia o HTML do DOM no momento em que um erro foi capturado. Habilita o
-**session replay MVP** — quando o admin abrir a issue no dashboard, verá uma
-foto visual do que estava na tela.
+Envia o HTML do DOM no momento em que um erro (ou um `pageView()`, no modo
+`captureSnapshots: 'screen'`) foi capturado. Habilita o **session replay
+MVP** — quando o admin abrir a issue/evento no dashboard, verá uma foto
+visual do que estava na tela.
 
 ### 2.1 Endpoint
 

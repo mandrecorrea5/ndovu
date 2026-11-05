@@ -85,6 +85,7 @@ const ndovu = createNdovu({
   captureGlobals: true,
   captureWebVitals: true,
   breadcrumbs: true,
+  captureSnapshots: true, // true = erro; 'screen' = erro + pageView
 });
 
 ndovu.pageView('/faturas');

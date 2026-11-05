@@ -45,6 +45,10 @@ Cada linha expande e mostra o payload cru.
   houver `nextCursor` — quando acabar aparece "fim dos resultados".
 - **Estados**: `LoadingState`, `ErrorState`, `EmptyState` ("Nenhum
   evento com esses filtros. Ajuste o período ou limpe os filtros.").
+- **Snapshot de tela**: ao expandir um evento `error` ou `page_view` que
+  tenha snapshot, aparece o iframe sandbox com o DOM daquele momento. O
+  `page_view` só tem snapshot se o app usar `captureSnapshots: 'screen'`
+  — veja [ingest-snapshots.md](ingest-snapshots.md).
 
 ## Como demonstrar
 

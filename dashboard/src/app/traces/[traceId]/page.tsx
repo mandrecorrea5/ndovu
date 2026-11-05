@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { JsonView } from '@/components/JsonView';
+import { SnapshotViewer } from '@/components/SnapshotViewer';
 import { EmptyState, ErrorState, LoadingState, StatTile } from '@/components/ui';
 import { api } from '@/lib/api';
 import { fmtDateTime } from '@/lib/time';
@@ -194,6 +195,7 @@ function RowDetail({ row }: { row: WaterfallRow }) {
         <Field label="usuário" value={e.userId || 'anônimo'} />
         {e.error?.message ? <Field label="erro" value={`${e.error.code ?? ''} ${e.error.message}`} /> : null}
       </div>
+      {e.type === 'error' || e.type === 'page_view' ? <SnapshotViewer eventId={e.eventId} /> : null}
       <div className="grid gap-x-6 lg:grid-cols-2">
         <JsonView title="Request body" data={e.http?.requestBody} />
         <JsonView title="Response body" data={e.http?.responseBody} />

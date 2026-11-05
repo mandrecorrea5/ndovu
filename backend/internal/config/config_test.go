@@ -39,6 +39,20 @@ func TestValidateProductionAcceptsExplicitConfiguration(t *testing.T) {
 	}
 }
 
+func TestValidateProductionAcceptsS3EndpointVariants(t *testing.T) {
+	for _, endpoint := range []string{
+		"account.r2.cloudflarestorage.com",
+		"https://account.r2.cloudflarestorage.com",
+		"https://account.r2.cloudflarestorage.com/",
+	} {
+		cfg := validProductionConfig()
+		cfg.S3Endpoint = endpoint
+		if err := validate(cfg, "api"); err != nil {
+			t.Fatalf("endpoint %q deveria ser aceito: %v", endpoint, err)
+		}
+	}
+}
+
 func TestLoadProductionDoesNotSetBootstrapIngestKey(t *testing.T) {
 	t.Setenv("NDOVU_ENV", "production")
 	t.Setenv("NDOVU_AUTH_SECRET", "0123456789abcdef0123456789abcdef")
@@ -95,6 +109,15 @@ func TestValidateProductionRejectsInsecureSettings(t *testing.T) {
 		{"origem sem HTTPS", func(c *Config) { c.CORSOrigins = "http://ndovu.example.com" }},
 		{"TLS S3 desabilitado", func(c *Config) { c.S3UseSSL = false }},
 		{"snapshot sem credenciais", func(c *Config) { c.S3SecretKey = "" }},
+		{"S3 endpoint com bucket no path", func(c *Config) {
+			c.S3Endpoint = "https://account.r2.cloudflarestorage.com/ndovu-snapshots"
+		}},
+		{"S3 endpoint sem esquema com bucket no path", func(c *Config) {
+			c.S3Endpoint = "account.r2.cloudflarestorage.com/ndovu-snapshots"
+		}},
+		{"S3 endpoint com esquema conflitante", func(c *Config) {
+			c.S3Endpoint = "http://account.r2.cloudflarestorage.com"
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
