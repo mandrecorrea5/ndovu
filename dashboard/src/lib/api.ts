@@ -186,6 +186,8 @@ export const api = {
   overview: (q: Record<string, string | undefined>) =>
     request<Overview>('GET', '/v1/stats/overview', { params: q }),
   filterOptions: () => request<FilterOptions>('GET', '/v1/meta/filters'),
+  // Apps que o usuário autenticado pode consultar (company + grants).
+  myApps: () => request<{ apps: string[] }>('GET', '/v1/meta/apps'),
 
   // autenticação
 

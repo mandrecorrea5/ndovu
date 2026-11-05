@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Button, Checkbox, Field, Input, Select } from '@/components/form';
 import { SavedViewsMenu } from '@/components/SavedViewsMenu';
 import { api } from '@/lib/api';
+import { useAppScope } from '@/lib/app-scope';
 import { RANGE_PRESETS } from '@/lib/time';
 
 // Chaves de filtro que fazem sentido persistir numa view salva.
@@ -28,6 +29,7 @@ const VIEW_FILTER_KEYS = [
 export function FiltersBar() {
   const router = useRouter();
   const params = useSearchParams();
+  const { setSelectedApp } = useAppScope();
   const { data: options } = useQuery({ queryKey: ['filters'], queryFn: api.filterOptions });
 
   const [search, setSearch] = useState(params.get('search') ?? '');
@@ -60,20 +62,6 @@ export function FiltersBar() {
           {RANGE_PRESETS.map((p) => (
             <option key={p.key} value={p.key}>
               {p.label}
-            </option>
-          ))}
-        </Select>
-      </Field>
-
-      <Field label="App" className="w-40">
-        <Select
-          value={params.get('app') ?? ''}
-          onChange={(e) => setParam({ app: e.target.value })}
-        >
-          <option value="">todos</option>
-          {options?.apps.map((a) => (
-            <option key={a} value={a}>
-              {a}
             </option>
           ))}
         </Select>
@@ -177,9 +165,13 @@ export function FiltersBar() {
           viewType="traces"
           currentFilters={collectFilters(params)}
           onApply={(filters) => {
-            // Aplica todos os campos conhecidos + limpa os que a view não define.
+            // `app` virou escopo global, não filtro de URL: uma view salva com
+            // app troca o app do dashboard; as demais chaves vão no querystring.
+            const app = typeof filters.app === 'string' ? filters.app : '';
+            if (app) setSelectedApp(app);
             const patch: Record<string, string> = {};
             for (const k of VIEW_FILTER_KEYS) {
+              if (k === 'app') continue;
               const v = filters[k];
               patch[k] = typeof v === 'string' ? v : '';
             }

@@ -1,11 +1,12 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button, Field, Input, Select } from '@/components/form';
 import { Modal, ModalActions } from '@/components/Modal';
 import { EmptyState, ErrorState, LoadingState, StatTile } from '@/components/ui';
 import { api, ApiError, type Funnel, type FunnelStep } from '@/lib/api';
+import { useAppScope } from '@/lib/app-scope';
 import { canEdit, getSessionUser } from '@/lib/auth';
 import { fmtNumber, RANGE_PRESETS, rangeToInterval } from '@/lib/time';
 
@@ -32,8 +33,8 @@ const EMPTY_EDITOR: EditorState = {
 
 export default function FunnelsPage() {
   const qc = useQueryClient();
+  const { apps, selectedApp } = useAppScope();
   const [range, setRange] = useState('7d');
-  const [selectedApp, setSelectedApp] = useState('');
   const [selectedId, setSelectedId] = useState<string | undefined>();
   const [editorOpen, setEditorOpen] = useState(false);
   const [editor, setEditor] = useState<EditorState>(EMPTY_EDITOR);
@@ -42,7 +43,12 @@ export default function FunnelsPage() {
   const dateRange = useMemo(() => rangeToInterval(range), [range]);
   const editable = canEdit(getSessionUser());
 
-  const { data: options } = useQuery({ queryKey: ['filters'], queryFn: api.filterOptions });
+  // Ao trocar o app global, um funil selecionado de outro app deixa de existir
+  // na lista filtrada — limpa a seleção para não consultar resultado órfão.
+  useEffect(() => {
+    setSelectedId(undefined);
+  }, [selectedApp]);
+
   const { data, isLoading, error } = useQuery({
     queryKey: ['funnels', selectedApp],
     queryFn: () => api.listFunnels(selectedApp || undefined),
@@ -127,14 +133,6 @@ export default function FunnelsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Select value={selectedApp} onChange={(e) => setSelectedApp(e.target.value)} className="w-40">
-            <option value="">todos os apps</option>
-            {options?.apps.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </Select>
           <Select value={range} onChange={(e) => setRange(e.target.value)} className="w-44">
             {RANGE_PRESETS.map((p) => (
               <option key={p.key} value={p.key}>
@@ -291,7 +289,7 @@ export default function FunnelsPage() {
                 onChange={(e) => setEditor({ ...editor, app: e.target.value })}
               >
                 <option value="">— selecione —</option>
-                {options?.apps.map((a) => (
+                {apps.map((a) => (
                   <option key={a} value={a}>
                     {a}
                   </option>

@@ -141,7 +141,7 @@ func (s *QueryService) sessionFromFeedback(ctx context.Context, sessionID string
 }
 
 // Overview agrega métricas da janela de tempo pedida.
-func (s *QueryService) Overview(ctx context.Context, from, to time.Time, app string) (domain.Overview, error) {
+func (s *QueryService) Overview(ctx context.Context, from, to time.Time, app string, appScope []string) (domain.Overview, error) {
 	if to.IsZero() {
 		to = time.Now().UTC()
 	}
@@ -151,12 +151,12 @@ func (s *QueryService) Overview(ctx context.Context, from, to time.Time, app str
 	if !from.Before(to) {
 		return domain.Overview{}, domain.NewValidationError("'from' deve ser anterior a 'to'")
 	}
-	return s.reader.GetOverview(ctx, from, to, app)
+	return s.reader.GetOverview(ctx, from, to, app, appScope)
 }
 
 // FilterOptions devolve os valores distintos existentes para montar filtros.
-func (s *QueryService) FilterOptions(ctx context.Context) (domain.FilterOptions, error) {
-	return s.reader.GetFilterOptions(ctx)
+func (s *QueryService) FilterOptions(ctx context.Context, appScope []string) (domain.FilterOptions, error) {
+	return s.reader.GetFilterOptions(ctx, appScope)
 }
 
 // WebVitals agrega LCP/CLS/INP/... por rota (p75, p95, good/poor counts).

@@ -45,10 +45,10 @@ func (nopReader) GetSession(context.Context, string) (domain.Session, error) {
 func (nopReader) SessionTimeline(context.Context, string) ([]domain.TraceEvent, error) {
 	return nil, nil
 }
-func (nopReader) GetOverview(context.Context, time.Time, time.Time, string) (domain.Overview, error) {
+func (nopReader) GetOverview(context.Context, time.Time, time.Time, string, []string) (domain.Overview, error) {
 	return domain.Overview{}, nil
 }
-func (nopReader) GetFilterOptions(context.Context) (domain.FilterOptions, error) {
+func (nopReader) GetFilterOptions(context.Context, []string) (domain.FilterOptions, error) {
 	return domain.FilterOptions{Apps: []string{}, Types: []string{}, Features: []string{}, Names: []string{}}, nil
 }
 func (nopReader) FindIssues(context.Context, domain.IssueFilter) ([]domain.Issue, error) {
@@ -88,10 +88,10 @@ func (nopReader) DeleteEventsByUser(context.Context, string) error { return nil 
 // -----------------------------------------------------------------------
 
 type nopUserStore struct {
-	users   map[string]domain.User // por id
-	hashes  map[string]string
-	seq     int
-	adminN  int // countActiveAdmins
+	users  map[string]domain.User // por id
+	hashes map[string]string
+	seq    int
+	adminN int // countActiveAdmins
 }
 
 func newNopUserStore() *nopUserStore {
@@ -666,7 +666,9 @@ func (f *nopSourceMapStore) DeleteSourceMap(_ context.Context, id string) error 
 	return nil
 }
 
-type nopSnapshotMetaStore struct{ items map[string]domain.SessionSnapshot }
+type nopSnapshotMetaStore struct {
+	items map[string]domain.SessionSnapshot
+}
 
 func (f *nopSnapshotMetaStore) CreateSnapshotMeta(_ context.Context, s domain.SessionSnapshot) error {
 	if f.items == nil {

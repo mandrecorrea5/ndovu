@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -20,19 +21,19 @@ import (
 
 // Handlers concentra as dependências dos endpoints.
 type Handlers struct {
-	ingest     *usecase.IngestService
-	query      *usecase.QueryService
-	auth       *usecase.AuthService
-	keys       *usecase.APIKeyService
-	apps       *usecase.AppService
-	companies  *usecase.CompanyService
-	issues     *usecase.IssueService
-	alerts     *usecase.AlertService
-	releases   *usecase.ReleaseService
-	sourceMaps *usecase.SourceMapService
-	savedViews *usecase.SavedViewService
-	funnels    *usecase.FunnelService
-	retention  *usecase.RetentionService
+	ingest      *usecase.IngestService
+	query       *usecase.QueryService
+	auth        *usecase.AuthService
+	keys        *usecase.APIKeyService
+	apps        *usecase.AppService
+	companies   *usecase.CompanyService
+	issues      *usecase.IssueService
+	alerts      *usecase.AlertService
+	releases    *usecase.ReleaseService
+	sourceMaps  *usecase.SourceMapService
+	savedViews  *usecase.SavedViewService
+	funnels     *usecase.FunnelService
+	retention   *usecase.RetentionService
 	digest      *usecase.DigestService
 	audit       *usecase.AuditService
 	gdpr        *usecase.GDPRService
@@ -328,7 +329,7 @@ func (h *Handlers) GetOverview(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, r, domain.NewValidationError("'to' deve ser RFC3339"))
 		return
 	}
-	overview, err := h.query.Overview(r.Context(), derefTime(from), derefTime(to), q.Get("app"))
+	overview, err := h.query.Overview(r.Context(), derefTime(from), derefTime(to), q.Get("app"), scopeFrom(r))
 	if err != nil {
 		h.writeError(w, r, err)
 		return
@@ -338,12 +339,39 @@ func (h *Handlers) GetOverview(w http.ResponseWriter, r *http.Request) {
 
 // GetFilterOptions devolve valores distintos para os dropdowns.
 func (h *Handlers) GetFilterOptions(w http.ResponseWriter, r *http.Request) {
-	opts, err := h.query.FilterOptions(r.Context())
+	opts, err := h.query.FilterOptions(r.Context(), scopeFrom(r))
 	if err != nil {
 		h.writeError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, opts)
+}
+
+// GetMyApps devolve os nomes dos apps que o usuário autenticado pode
+// consultar. É a lista do seletor global do dashboard: super-admin vê todos
+// os apps cadastrados; os demais veem exatamente o AppScope já calculado pelo
+// tenantScope (company + grants explícitos).
+func (h *Handlers) GetMyApps(w http.ResponseWriter, r *http.Request) {
+	names := []string{}
+	scope, hasScope := AppScopeFrom(r.Context())
+	if !hasScope || scope == nil {
+		apps, err := h.apps.List(r.Context())
+		if err != nil {
+			h.writeError(w, r, err)
+			return
+		}
+		for _, a := range apps {
+			names = append(names, a.Name)
+		}
+	} else {
+		for _, name := range scope {
+			if name != noAppsSentinel {
+				names = append(names, name)
+			}
+		}
+	}
+	sort.Strings(names)
+	writeJSON(w, http.StatusOK, map[string]any{"apps": names})
 }
 
 // Health é o probe de liveness/readiness.
@@ -852,13 +880,13 @@ type anomalyRuleRequest struct {
 func (req anomalyRuleRequest) toInput() usecase.AnomalyInput {
 	return usecase.AnomalyInput{
 		Name: req.Name, App: req.App,
-		Metric: domain.AnomalyMetric(req.Metric),
+		Metric:        domain.AnomalyMetric(req.Metric),
 		WindowMinutes: req.WindowMinutes, BaselineWeeks: req.BaselineWeeks,
-		Sensitivity: req.Sensitivity,
-		Direction:   domain.AnomalyDirection(req.Direction),
+		Sensitivity:    req.Sensitivity,
+		Direction:      domain.AnomalyDirection(req.Direction),
 		SilenceSeconds: req.SilenceSeconds,
-		Channel:   domain.AlertChannel(req.Channel),
-		TargetURL: req.TargetURL, Active: req.Active,
+		Channel:        domain.AlertChannel(req.Channel),
+		TargetURL:      req.TargetURL, Active: req.Active,
 	}
 }
 
@@ -1283,9 +1311,9 @@ func (h *Handlers) DeleteGDPRUser(w http.ResponseWriter, r *http.Request) {
 	}
 	h.recordAudit(r, "gdpr.forget", "user_data", userID, nil)
 	writeJSON(w, http.StatusAccepted, map[string]any{
-		"userId":  userID,
-		"status":  "delete dispatched",
-		"note":    "ClickHouse aplica async; consultas podem ver os dados por até alguns minutos",
+		"userId": userID,
+		"status": "delete dispatched",
+		"note":   "ClickHouse aplica async; consultas podem ver os dados por até alguns minutos",
 	})
 }
 

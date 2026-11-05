@@ -138,8 +138,8 @@ type EventReader interface {
 	FindSessions(ctx context.Context, f SessionFilter) (SessionPage, error)
 	GetSession(ctx context.Context, sessionID string) (Session, error)
 	SessionTimeline(ctx context.Context, sessionID string) ([]TraceEvent, error)
-	GetOverview(ctx context.Context, from, to time.Time, app string) (Overview, error)
-	GetFilterOptions(ctx context.Context) (FilterOptions, error)
+	GetOverview(ctx context.Context, from, to time.Time, app string, appScope []string) (Overview, error)
+	GetFilterOptions(ctx context.Context, appScope []string) (FilterOptions, error)
 	FindIssues(ctx context.Context, f IssueFilter) ([]Issue, error)
 	FindWebVitals(ctx context.Context, f WebVitalFilter) ([]WebVitalStat, error)
 	CountErrorsSince(ctx context.Context, app, code string, since time.Time) (int, error)
@@ -158,7 +158,7 @@ type EventReader interface {
 // FunnelStepMatch identifica quais eventos "fecham" o step. Todos os campos
 // preenchidos precisam bater (AND). type é obrigatório.
 type FunnelStepMatch struct {
-	Type    string `json:"type"`              // page_view | action | http_request | error | custom
+	Type    string `json:"type"` // page_view | action | http_request | error | custom
 	Name    string `json:"name,omitempty"`
 	Screen  string `json:"screen,omitempty"`
 	HTTPURL string `json:"httpUrl,omitempty"` // match parcial (positionCaseInsensitive)
@@ -189,27 +189,27 @@ type FunnelResult struct {
 // FunnelStepResult é um passo com contagem, conversão desde o step 0 e
 // conversão desde o step anterior (drop-off nesse passo).
 type FunnelStepResult struct {
-	Name             string  `json:"name"`
-	Sessions         int     `json:"sessions"`
-	OverallRate      float64 `json:"overallRate"`      // fração vs step 0
-	StepConversion   float64 `json:"stepConversion"`   // fração vs step anterior
-	DropoffFromPrev  int     `json:"dropoffFromPrev"`  // sessões perdidas neste passo
+	Name            string  `json:"name"`
+	Sessions        int     `json:"sessions"`
+	OverallRate     float64 `json:"overallRate"`     // fração vs step 0
+	StepConversion  float64 `json:"stepConversion"`  // fração vs step anterior
+	DropoffFromPrev int     `json:"dropoffFromPrev"` // sessões perdidas neste passo
 }
 
 // RetentionFilter define a análise de retenção.
 type RetentionFilter struct {
-	App       string
-	From      *time.Time
-	To        *time.Time
-	CohortBy  string  // "week" (default) — futuramente "day", "month"
-	OffsetsDays []int // ex.: [1, 7, 14, 30]
+	App         string
+	From        *time.Time
+	To          *time.Time
+	CohortBy    string // "week" (default) — futuramente "day", "month"
+	OffsetsDays []int  // ex.: [1, 7, 14, 30]
 }
 
 // RetentionCohort é uma linha da matriz de cohort.
 type RetentionCohort struct {
-	Cohort      time.Time         `json:"cohort"`      // início do período
-	NewUsers    int               `json:"newUsers"`    // users que viram no cohort
-	Retained    map[string]int    `json:"retained"`    // "D1" -> N, "D7" -> N, ...
+	Cohort      time.Time          `json:"cohort"`   // início do período
+	NewUsers    int                `json:"newUsers"` // users que viram no cohort
+	Retained    map[string]int     `json:"retained"` // "D1" -> N, "D7" -> N, ...
 	RetainedPct map[string]float64 `json:"retainedPct"`
 }
 
@@ -232,16 +232,16 @@ type IssueFilter struct {
 
 // Release resume a atividade de uma versão do app na janela consultada.
 type Release struct {
-	Release      string    `json:"release"`
-	App          string    `json:"app"`
-	FirstSeen    time.Time `json:"firstSeen"`
-	LastSeen     time.Time `json:"lastSeen"`
-	Events       int       `json:"events"`
-	Errors       int       `json:"errors"`
-	Sessions     int       `json:"sessions"`
-	Users        int       `json:"users"`
-	ErrorRate    float64   `json:"errorRate"`
-	AvgDurationMs float64  `json:"avgDurationMs"`
+	Release       string    `json:"release"`
+	App           string    `json:"app"`
+	FirstSeen     time.Time `json:"firstSeen"`
+	LastSeen      time.Time `json:"lastSeen"`
+	Events        int       `json:"events"`
+	Errors        int       `json:"errors"`
+	Sessions      int       `json:"sessions"`
+	Users         int       `json:"users"`
+	ErrorRate     float64   `json:"errorRate"`
+	AvgDurationMs float64   `json:"avgDurationMs"`
 }
 
 // ReleaseFilter filtra a listagem de releases.
@@ -256,11 +256,11 @@ type ReleaseFilter struct {
 // ReleaseComparison mostra o delta entre duas releases (Fase 2 — comparação
 // por versão). Usado para detectar regressões após um deploy.
 type ReleaseComparison struct {
-	ReleaseA  Release      `json:"releaseA"`
-	ReleaseB  Release      `json:"releaseB"`
-	DeltaErrorRate  float64 `json:"deltaErrorRate"`  // B - A
-	DeltaAvgMs      float64 `json:"deltaAvgMs"`      // B - A
-	NewIssues       []Issue `json:"newIssues"`       // presentes em B mas não em A
+	ReleaseA       Release `json:"releaseA"`
+	ReleaseB       Release `json:"releaseB"`
+	DeltaErrorRate float64 `json:"deltaErrorRate"` // B - A
+	DeltaAvgMs     float64 `json:"deltaAvgMs"`     // B - A
+	NewIssues      []Issue `json:"newIssues"`      // presentes em B mas não em A
 }
 
 // WebVitalFilter filtra as agregações de Web Vitals.

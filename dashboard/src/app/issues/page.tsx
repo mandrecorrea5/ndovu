@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { Button, Checkbox, Select } from '@/components/form';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui';
 import { api, type Issue } from '@/lib/api';
+import { useAppScope } from '@/lib/app-scope';
 import { canEdit, getSessionUser } from '@/lib/auth';
 import { fmtDateTime, fmtNumber, RANGE_PRESETS, rangeToInterval } from '@/lib/time';
 
@@ -25,21 +26,19 @@ const STATUS_CLASS: Record<NonNullable<Issue['status']>, string> = {
 
 export default function IssuesPage() {
   const [range, setRange] = useState('24h');
-  const [app, setApp] = useState('');
+  const { selectedApp } = useAppScope();
   const [onlyOpen, setOnlyOpen] = useState(true);
   const [onlyMine, setOnlyMine] = useState(false);
   const qc = useQueryClient();
 
-  const { data: options } = useQuery({ queryKey: ['filters'], queryFn: api.filterOptions });
-
   const { data, isLoading, error, refetch, isFetching } = useQuery({
-    queryKey: ['issues', range, app, onlyOpen, onlyMine],
+    queryKey: ['issues', range, selectedApp, onlyOpen, onlyMine],
     queryFn: () => {
       const { from, to } = rangeToInterval(range);
       return api.issues({
         from,
         to,
-        app: app || undefined,
+        app: selectedApp || undefined,
         onlyOpen: onlyOpen ? 'true' : undefined,
         assignee: onlyMine ? 'me' : undefined,
       });
@@ -73,18 +72,6 @@ export default function IssuesPage() {
             onChange={(e) => setOnlyMine(e.target.checked)}
             label="atribuídas a mim"
           />
-          <Select
-            value={app}
-            onChange={(e) => setApp(e.target.value)}
-            className="w-40"
-          >
-            <option value="">todos os apps</option>
-            {options?.apps.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </Select>
           <Select
             value={range}
             onChange={(e) => setRange(e.target.value)}

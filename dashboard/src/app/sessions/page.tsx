@@ -2,20 +2,20 @@
 
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button, Checkbox, Field, Input, Select } from '@/components/form';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui';
 import { api } from '@/lib/api';
+import { useAppScope } from '@/lib/app-scope';
 import { fmtDateTime, fmtDuration, fmtNumber, RANGE_PRESETS, rangeToInterval } from '@/lib/time';
 
 export default function SessionsPage() {
+  const { selectedApp } = useAppScope();
   const [dRange, setDRange] = useState('24h');
-  const [dApp, setDApp] = useState('');
   const [dUserId, setDUserId] = useState('');
   const [dOnlyErrors, setDOnlyErrors] = useState(false);
   const [dFrom, setDFrom] = useState('');
   const [dTo, setDTo] = useState('');
-  const [app, setApp] = useState('');
   const [userId, setUserId] = useState('');
   const [onlyErrors, setOnlyErrors] = useState(false);
   const [from, setFrom] = useState<string | undefined>(() => rangeToInterval('24h').from);
@@ -23,14 +23,18 @@ export default function SessionsPage() {
   const [offset, setOffset] = useState(0);
   const limit = 25;
 
-  const { data: options } = useQuery({ queryKey: ['filters'], queryFn: api.filterOptions });
+  // Trocar o app global começa da primeira página.
+  useEffect(() => {
+    setOffset(0);
+  }, [selectedApp]);
+
   const { data, isLoading, error } = useQuery({
-    queryKey: ['sessions', from, to, app, userId, onlyErrors, offset],
+    queryKey: ['sessions', from, to, selectedApp, userId, onlyErrors, offset],
     queryFn: () =>
       api.sessions({
         from,
         to,
-        app: app || undefined,
+        app: selectedApp || undefined,
         userId: userId || undefined,
         onlyErrors: onlyErrors ? 'true' : undefined,
         limit: String(limit),
@@ -39,7 +43,6 @@ export default function SessionsPage() {
   });
 
   const applyFilters = () => {
-    setApp(dApp);
     setUserId(dUserId);
     setOnlyErrors(dOnlyErrors);
     if (dFrom || dTo) {
@@ -62,14 +65,6 @@ export default function SessionsPage() {
           <Select value={dRange} onChange={(e) => setDRange(e.target.value)}>
             {RANGE_PRESETS.map((p) => (
               <option key={p.key} value={p.key}>{p.label}</option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="App" className="w-40">
-          <Select value={dApp} onChange={(e) => setDApp(e.target.value)}>
-            <option value="">todos os apps</option>
-            {options?.apps.map((a) => (
-              <option key={a} value={a}>{a}</option>
             ))}
           </Select>
         </Field>

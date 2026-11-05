@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { Button, Select } from '@/components/form';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui';
 import { api } from '@/lib/api';
+import { useAppScope } from '@/lib/app-scope';
 import { fmtNumber, rangeToInterval } from '@/lib/time';
 
 const RANGE_OPTIONS = [
@@ -39,19 +40,18 @@ const PCT = (n: number) => `${(n * 100).toFixed(1)}%`;
 
 export default function RetentionPage() {
   const [range, setRange] = useState('30d');
-  const [app, setApp] = useState('');
+  const { selectedApp } = useAppScope();
   const [cohortBy, setCohortBy] = useState('week');
 
   const dateRange = useMemo(() => windowFor(range), [range]);
 
-  const { data: options } = useQuery({ queryKey: ['filters'], queryFn: api.filterOptions });
   const { data, isLoading, error, refetch, isFetching } = useQuery({
-    queryKey: ['retention', range, app, cohortBy],
+    queryKey: ['retention', range, selectedApp, cohortBy],
     queryFn: () =>
       api.retention({
         from: dateRange.from,
         to: dateRange.to,
-        app: app || undefined,
+        app: selectedApp || undefined,
         cohortBy,
       }),
   });
@@ -71,14 +71,6 @@ export default function RetentionPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Select value={app} onChange={(e) => setApp(e.target.value)} className="w-40">
-            <option value="">todos os apps</option>
-            {options?.apps.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </Select>
           <Select value={cohortBy} onChange={(e) => setCohortBy(e.target.value)} className="w-32">
             <option value="week">semanal</option>
             <option value="day">diário</option>

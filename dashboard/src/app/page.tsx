@@ -7,18 +7,18 @@ import { EventsChart } from '@/components/EventsChart';
 import { Button, Select } from '@/components/form';
 import { ErrorState, LoadingState, StatTile } from '@/components/ui';
 import { api } from '@/lib/api';
+import { useAppScope } from '@/lib/app-scope';
 import { fmtDuration, fmtNumber, RANGE_PRESETS, rangeToInterval } from '@/lib/time';
 
 export default function OverviewPage() {
   const [range, setRange] = useState('24h');
-  const [app, setApp] = useState('');
-  const { data: options } = useQuery({ queryKey: ['filters'], queryFn: api.filterOptions });
+  const { selectedApp } = useAppScope();
 
   const { data, isLoading, error, refetch, isFetching } = useQuery({
-    queryKey: ['overview', range, app],
+    queryKey: ['overview', range, selectedApp],
     queryFn: () => {
       const { from, to } = rangeToInterval(range);
-      return api.overview({ from, to, app: app || undefined });
+      return api.overview({ from, to, app: selectedApp || undefined });
     },
     refetchInterval: 30_000,
   });
@@ -31,19 +31,6 @@ export default function OverviewPage() {
           <Button onClick={() => refetch()} loading={isFetching}>
             {isFetching ? 'atualizando…' : 'Atualizar'}
           </Button>
-          <Select
-            value={app}
-            onChange={(e) => setApp(e.target.value)}
-            aria-label="Filtrar por app"
-            className="w-40"
-          >
-            <option value="">todos os apps</option>
-            {options?.apps.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </Select>
           <Select
             value={range}
             onChange={(e) => setRange(e.target.value)}

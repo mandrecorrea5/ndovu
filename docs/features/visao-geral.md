@@ -19,11 +19,13 @@ quedas e regressões sem precisar filtrar nada.
 
 ## Como usar
 
-1. Abra o dashboard — a visão geral já carrega com janela **24h** e
-   **todos os apps**.
+1. Abra o dashboard — a visão geral já carrega com janela **24h** e o app
+   escolhido no [seletor global](selecao-global-de-app.md)
+   (**todos os apps** se você ainda não escolheu).
 2. Ajuste a janela no dropdown à direita (**5 min**, **1h**, **24h**,
    **7d**, **30d**) para investigar picos ou olhar tendência.
-3. Filtre por app quando precisar isolar um portal específico. O filtro
+3. Para isolar um portal, escolha o app na barra **App** do topo — a
+   escolha vale para todas as telas e permanece entre navegações. Ela
    respeita o tenant scope: você só vê os apps aos quais tem acesso.
 4. Clique **Atualizar** para forçar refresh imediato (o polling de 30s
    pega mudanças recentes sozinho).

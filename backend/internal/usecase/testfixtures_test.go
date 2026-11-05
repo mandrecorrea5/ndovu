@@ -11,11 +11,11 @@ import (
 // Testes embarcam anonimamente e sobrescrevem só os métodos que precisam
 // — evita boilerplate quando o service testado toca em poucos métodos.
 //
-//   type myFakeReader struct {
-//       nopEventReader
-//       // campos custom
-//   }
-//   func (r *myFakeReader) FindIssues(...) {...}
+//	type myFakeReader struct {
+//	    nopEventReader
+//	    // campos custom
+//	}
+//	func (r *myFakeReader) FindIssues(...) {...}
 type nopEventReader struct{}
 
 func (nopEventReader) FindEvents(context.Context, domain.EventFilter) (domain.EventPage, error) {
@@ -33,10 +33,10 @@ func (nopEventReader) GetSession(context.Context, string) (domain.Session, error
 func (nopEventReader) SessionTimeline(context.Context, string) ([]domain.TraceEvent, error) {
 	return nil, nil
 }
-func (nopEventReader) GetOverview(context.Context, time.Time, time.Time, string) (domain.Overview, error) {
+func (nopEventReader) GetOverview(context.Context, time.Time, time.Time, string, []string) (domain.Overview, error) {
 	return domain.Overview{}, nil
 }
-func (nopEventReader) GetFilterOptions(context.Context) (domain.FilterOptions, error) {
+func (nopEventReader) GetFilterOptions(context.Context, []string) (domain.FilterOptions, error) {
 	return domain.FilterOptions{}, nil
 }
 func (nopEventReader) FindIssues(context.Context, domain.IssueFilter) ([]domain.Issue, error) {

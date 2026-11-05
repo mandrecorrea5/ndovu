@@ -2,10 +2,11 @@
 
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
-import { Button, Field, Select } from '@/components/form';
+import { useEffect, useMemo, useState } from 'react';
+import { Button, Select } from '@/components/form';
 import { EmptyState, ErrorState, LoadingState, StatTile } from '@/components/ui';
 import { api, type Release } from '@/lib/api';
+import { useAppScope } from '@/lib/app-scope';
 import { fmtDateTime, fmtDuration, fmtNumber, RANGE_PRESETS, rangeToInterval } from '@/lib/time';
 
 const PCT = (n: number) => `${(n * 100).toFixed(2)}%`;
@@ -14,11 +15,15 @@ const SIGNED = (n: number, unit = '') =>
 
 export default function ReleasesPage() {
   const [range, setRange] = useState('7d');
-  const [app, setApp] = useState('');
+  const { selectedApp } = useAppScope();
   const [releaseA, setReleaseA] = useState('');
   const [releaseB, setReleaseB] = useState('');
 
-  const { data: options } = useQuery({ queryKey: ['filters'], queryFn: api.filterOptions });
+  // Trocar de app invalida as releases selecionadas para comparação.
+  useEffect(() => {
+    setReleaseA('');
+    setReleaseB('');
+  }, [selectedApp]);
 
   const window = useMemo(() => rangeToInterval(range), [range]);
 
@@ -29,18 +34,18 @@ export default function ReleasesPage() {
     refetch,
     isFetching,
   } = useQuery({
-    queryKey: ['releases', range, app],
-    queryFn: () => api.releases({ from: window.from, to: window.to, app: app || undefined }),
+    queryKey: ['releases', range, selectedApp],
+    queryFn: () => api.releases({ from: window.from, to: window.to, app: selectedApp || undefined }),
   });
 
   const compare = useQuery({
-    queryKey: ['releases-compare', range, app, releaseA, releaseB],
+    queryKey: ['releases-compare', range, selectedApp, releaseA, releaseB],
     enabled: !!(releaseA && releaseB),
     queryFn: () =>
       api.compareReleases({
         from: window.from,
         to: window.to,
-        app: app || undefined,
+        app: selectedApp || undefined,
         releaseA,
         releaseB,
       }),
@@ -57,14 +62,6 @@ export default function ReleasesPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Select value={app} onChange={(e) => setApp(e.target.value)} className="w-40">
-            <option value="">todos os apps</option>
-            {options?.apps.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </Select>
           <Select value={range} onChange={(e) => setRange(e.target.value)} className="w-44">
             {RANGE_PRESETS.map((p) => (
               <option key={p.key} value={p.key}>

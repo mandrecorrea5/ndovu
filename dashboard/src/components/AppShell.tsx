@@ -10,6 +10,8 @@ import {
   logout as endSession,
   type SessionUser,
 } from '@/lib/auth';
+import { AppScopeProvider } from '@/lib/app-scope';
+import { AppScopeBar } from '@/components/AppScopeBar';
 
 // Ícones SVG inline — evita adicionar lucide-react/heroicons como dependência.
 const Icon = {
@@ -177,49 +179,52 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   };
 
   if (isLogin) return <>{children}</>;
-  if (!ready) return null;
+  if (!ready || !user) return null;
 
   const width = collapsed ? 'w-16' : 'w-60';
 
   return (
-    <div className="flex min-h-screen">
-      <aside
-        className={`${width} sticky top-0 flex h-screen flex-col border-r border-hairline bg-surface transition-[width] duration-150`}
-      >
-        <div className="flex h-14 items-center gap-2 border-b border-hairline px-3">
-          <Link href="/" className="flex items-center gap-2 truncate text-base font-semibold">
-            <span aria-hidden className="text-lg">🐘</span>
-            {!collapsed ? <span>Ndovu</span> : null}
-          </Link>
-          <button
-            type="button"
-            onClick={toggleCollapsed}
-            aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'}
-            className="ml-auto rounded-md p-1 text-ink-2 hover:bg-plane hover:text-ink"
-          >
-            {collapsed ? Icon.collapseRight : Icon.collapseLeft}
-          </button>
-        </div>
+    <AppScopeProvider key={user.id} userId={user.id}>
+      <div className="flex min-h-screen">
+        <aside
+          className={`${width} sticky top-0 flex h-screen flex-col border-r border-hairline bg-surface transition-[width] duration-150`}
+        >
+          <div className="flex h-14 items-center gap-2 border-b border-hairline px-3">
+            <Link href="/" className="flex items-center gap-2 truncate text-base font-semibold">
+              <span aria-hidden className="text-lg">🐘</span>
+              {!collapsed ? <span>Ndovu</span> : null}
+            </Link>
+            <button
+              type="button"
+              onClick={toggleCollapsed}
+              aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'}
+              className="ml-auto rounded-md p-1 text-ink-2 hover:bg-plane hover:text-ink"
+            >
+              {collapsed ? Icon.collapseRight : Icon.collapseLeft}
+            </button>
+          </div>
 
-        <nav className="flex-1 overflow-y-auto py-3">
-          <SidebarSection items={NAV} collapsed={collapsed} pathname={pathname} />
-          {user?.role === 'admin' ? (
-            <SidebarSection
-              title="Administração"
-              items={ADMIN_NAV}
-              collapsed={collapsed}
-              pathname={pathname}
-            />
-          ) : null}
-        </nav>
+          <nav className="flex-1 overflow-y-auto py-3">
+            <SidebarSection items={NAV} collapsed={collapsed} pathname={pathname} />
+            {user?.role === 'admin' ? (
+              <SidebarSection
+                title="Administração"
+                items={ADMIN_NAV}
+                collapsed={collapsed}
+                pathname={pathname}
+              />
+            ) : null}
+          </nav>
 
-        <UserMenu user={user} collapsed={collapsed} onLogout={logout} />
-      </aside>
+          <UserMenu user={user} collapsed={collapsed} onLogout={logout} />
+        </aside>
 
-      <main className="flex-1 overflow-x-hidden bg-plane">
-        <div className="mx-auto max-w-7xl px-6 py-6">{children}</div>
-      </main>
-    </div>
+        <main className="flex-1 overflow-x-hidden bg-plane">
+          <AppScopeBar />
+          <div className="mx-auto max-w-7xl px-6 py-6">{children}</div>
+        </main>
+      </div>
+    </AppScopeProvider>
   );
 }
 

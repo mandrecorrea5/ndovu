@@ -95,6 +95,7 @@ func NewRouter(h *Handlers, cfg config.Config, verifier domain.TokenVerifier, ke
 			r.Get("/issues", h.GetIssues)
 			r.Get("/issues/{fingerprint}/comments", h.GetIssueComments)
 			r.Get("/releases", h.GetReleases)
+			r.Get("/meta/apps", h.GetMyApps)
 			r.Get("/meta/filters", h.GetFilterOptions)
 			r.Get("/funnels", h.GetFunnels)
 			r.Get("/funnels/{id}/results", h.GetFunnelResults)

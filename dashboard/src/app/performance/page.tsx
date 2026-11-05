@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import { Button, Select } from '@/components/form';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui';
 import { api, type WebVitalStat } from '@/lib/api';
+import { useAppScope } from '@/lib/app-scope';
 import { fmtNumber, RANGE_PRESETS, rangeToInterval } from '@/lib/time';
 
 // Thresholds de rating alinhados com o SDK (web_vital_* -> good/needs/poor).
@@ -41,15 +42,13 @@ function rating(vital: string, value: number): 'good' | 'needs-improvement' | 'p
 
 export default function PerformancePage() {
   const [range, setRange] = useState('24h');
-  const [app, setApp] = useState('');
-
-  const { data: options } = useQuery({ queryKey: ['filters'], queryFn: api.filterOptions });
+  const { selectedApp } = useAppScope();
 
   const { data, isLoading, error, refetch, isFetching } = useQuery({
-    queryKey: ['vitals', range, app],
+    queryKey: ['vitals', range, selectedApp],
     queryFn: () => {
       const { from, to } = rangeToInterval(range);
-      return api.vitals({ from, to, app: app || undefined });
+      return api.vitals({ from, to, app: selectedApp || undefined });
     },
     refetchInterval: 60_000,
   });
@@ -72,18 +71,6 @@ export default function PerformancePage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Select
-            value={app}
-            onChange={(e) => setApp(e.target.value)}
-            className="w-40"
-          >
-            <option value="">todos os apps</option>
-            {options?.apps.map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </Select>
           <Select
             value={range}
             onChange={(e) => setRange(e.target.value)}

@@ -117,7 +117,7 @@ func (s *DigestService) SendOnce(ctx context.Context) error {
 	end := s.now().UTC()
 	start := end.Add(-7 * 24 * time.Hour)
 
-	overview, err := s.reader.GetOverview(ctx, start, end, "")
+	overview, err := s.reader.GetOverview(ctx, start, end, "", nil)
 	if err != nil {
 		return fmt.Errorf("overview: %w", err)
 	}

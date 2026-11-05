@@ -426,13 +426,13 @@ func (r *Repository) TraceTimeline(ctx context.Context, traceID string) ([]domai
 }
 
 // GetOverview agrega métricas da janela: totais, série temporal, top rotas e erros.
-func (r *Repository) GetOverview(ctx context.Context, from, to time.Time, app string) (domain.Overview, error) {
+func (r *Repository) GetOverview(ctx context.Context, from, to time.Time, app string, appScope []string) (domain.Overview, error) {
 	o := domain.Overview{
 		Series:    []domain.TimeBucket{},
 		TopRoutes: []domain.RouteStat{},
 		TopErrors: []domain.ErrorStat{},
 	}
-	appFilter := " AND ($3 = '' OR app = $3)"
+	appFilter := " AND ($3 = '' OR app = $3)" + appScopeCond(appScope)
 
 	var totalEvents, totalSessions, totalUsers, totalErrors uint64
 	var avgMs float64
@@ -643,8 +643,8 @@ func (r *Repository) FindIssues(ctx context.Context, f domain.IssueFilter) ([]do
 			&count, &users, &firstSeen, &lastSeen); err != nil {
 			return nil, fmt.Errorf("lendo issue: %w", err)
 		}
-		issue.Count = int(count)                //nolint:gosec
-		issue.AffectedUsers = int(users)        //nolint:gosec
+		issue.Count = int(count)         //nolint:gosec
+		issue.AffectedUsers = int(users) //nolint:gosec
 		issue.FirstSeen = firstSeen.UTC().Format(time.RFC3339)
 		issue.LastSeen = lastSeen.UTC().Format(time.RFC3339)
 		issue.ImpactScore = impactScore(issue.Count, issue.AffectedUsers, lastSeen)
@@ -1029,6 +1029,21 @@ func quote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
 }
 
+// appScopeCond monta a cláusula `AND app IN (...)` a partir da whitelist
+// injetada pelo tenantScope. Escopo vazio/nil = sem restrição (super-admin).
+// A whitelist é controlada pelo servidor, então o literal é seguro — mesma
+// abordagem usada nos demais filtros multi-tenant do repositório.
+func appScopeCond(scope []string) string {
+	if len(scope) == 0 {
+		return ""
+	}
+	quoted := make([]string, len(scope))
+	for i, v := range scope {
+		quoted[i] = quote(v)
+	}
+	return " AND app IN (" + strings.Join(quoted, ", ") + ")"
+}
+
 // FindWebVitals agrega Web Vitals (LCP, CLS, INP, FID, TTFB, FCP) por rota.
 // Os vitals chegam como eventos custom com nome `web_vital_<lower>` e valor
 // em metadata.value/metadata.vital/metadata.screen — enviados pelo SDK.
@@ -1099,8 +1114,9 @@ func (r *Repository) FindWebVitals(ctx context.Context, f domain.WebVitalFilter)
 }
 
 // GetFilterOptions retorna os valores distintos para os dropdowns do dashboard.
-func (r *Repository) GetFilterOptions(ctx context.Context) (domain.FilterOptions, error) {
+func (r *Repository) GetFilterOptions(ctx context.Context, appScope []string) (domain.FilterOptions, error) {
 	opts := domain.FilterOptions{Apps: []string{}, Types: []string{}, Features: []string{}, Names: []string{}}
+	scopeCond := appScopeCond(appScope)
 
 	collect := func(query string, dest *[]string) error {
 		rows, err := r.conn.Query(ctx, query)
@@ -1118,16 +1134,16 @@ func (r *Repository) GetFilterOptions(ctx context.Context) (domain.FilterOptions
 		return rows.Err()
 	}
 
-	if err := collect(`SELECT DISTINCT app FROM trace_events ORDER BY app`, &opts.Apps); err != nil {
+	if err := collect(`SELECT DISTINCT app FROM trace_events WHERE 1=1`+scopeCond+` ORDER BY app`, &opts.Apps); err != nil {
 		return opts, fmt.Errorf("apps: %w", err)
 	}
-	if err := collect(`SELECT DISTINCT event_type FROM trace_events ORDER BY event_type`, &opts.Types); err != nil {
+	if err := collect(`SELECT DISTINCT event_type FROM trace_events WHERE 1=1`+scopeCond+` ORDER BY event_type`, &opts.Types); err != nil {
 		return opts, fmt.Errorf("types: %w", err)
 	}
-	if err := collect(`SELECT DISTINCT feature FROM trace_events WHERE feature != '' ORDER BY feature LIMIT 200`, &opts.Features); err != nil {
+	if err := collect(`SELECT DISTINCT feature FROM trace_events WHERE feature != ''`+scopeCond+` ORDER BY feature LIMIT 200`, &opts.Features); err != nil {
 		return opts, fmt.Errorf("features: %w", err)
 	}
-	if err := collect(`SELECT DISTINCT name FROM trace_events ORDER BY name LIMIT 500`, &opts.Names); err != nil {
+	if err := collect(`SELECT DISTINCT name FROM trace_events WHERE 1=1`+scopeCond+` ORDER BY name LIMIT 500`, &opts.Names); err != nil {
 		return opts, fmt.Errorf("names: %w", err)
 	}
 	return opts, nil

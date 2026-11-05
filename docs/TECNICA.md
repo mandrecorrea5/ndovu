@@ -655,6 +655,7 @@ Todos os endpoints prefixados com `/v1`. A URL base é configurada em
 | GET | `/v1/stats/vitals` | Bearer | Web Vitals por rota |
 | GET | `/v1/stats/compare` | Bearer | Comparar releases |
 | GET | `/v1/stats/retention` | Bearer | Cohorts D1/D7/D14/D30 |
+| GET | `/v1/meta/apps` | Bearer | Apps acessíveis ao usuário |
 | GET | `/v1/meta/filters` | Bearer | Valores distintos para filtros |
 | GET | `/v1/issues` | Bearer | Erros agrupados |
 | PATCH | `/v1/issues/{fingerprint}` | Bearer | Atualiza status/assignee |

@@ -476,6 +476,20 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Overview" }
+  /v1/meta/apps:
+    get:
+      tags: [consulta]
+      summary: Apps que o usuário autenticado pode consultar
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Lista de apps acessíveis (nomes, ordem alfabética)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  apps: { type: array, items: { type: string } }
   /v1/meta/filters:
     get:
       tags: [consulta]

@@ -66,7 +66,7 @@ func TestClickHouse_GetOverview(t *testing.T) {
 
 	from := now.Add(-time.Hour)
 	to := now.Add(time.Hour)
-	ov, err := repo.GetOverview(ctx, from, to, "portal")
+	ov, err := repo.GetOverview(ctx, from, to, "portal", nil)
 	if err != nil {
 		t.Fatalf("overview: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestClickHouse_FindIssues(t *testing.T) {
 		domain.TraceEvent{
 			ID: mustUUID(t), SessionID: sid1, App: "portal", UserID: "u-1",
 			Type: domain.EventError, Name: "boom",
-			Error: &domain.ErrorInfo{Code: "AUTH_401", Message: "unauthorized"},
+			Error:      &domain.ErrorInfo{Code: "AUTH_401", Message: "unauthorized"},
 			OccurredAt: now,
 		},
 	)
@@ -102,7 +102,7 @@ func TestClickHouse_FindIssues(t *testing.T) {
 		domain.TraceEvent{
 			ID: mustUUID(t), SessionID: sid2, App: "portal", UserID: "u-2",
 			Type: domain.EventError, Name: "boom",
-			Error: &domain.ErrorInfo{Code: "AUTH_401", Message: "unauthorized"},
+			Error:      &domain.ErrorInfo{Code: "AUTH_401", Message: "unauthorized"},
 			OccurredAt: now.Add(1 * time.Second),
 		},
 	)
@@ -220,7 +220,7 @@ func TestClickHouse_GetFilterOptions(t *testing.T) {
 		},
 	)
 
-	opts, err := repo.GetFilterOptions(ctx)
+	opts, err := repo.GetFilterOptions(ctx, nil)
 	if err != nil {
 		t.Fatalf("filter options: %v", err)
 	}

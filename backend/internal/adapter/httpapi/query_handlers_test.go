@@ -139,6 +139,61 @@ func TestGetFilterOptions_OK(t *testing.T) {
 }
 
 // -----------------------------------------------------------------------
+// GET /v1/meta/apps — lista do seletor global de app
+// -----------------------------------------------------------------------
+
+func TestGetMyApps_AdminVeSomenteAppsDaPropriaCompany(t *testing.T) {
+	f := newFixture(t)
+	admin := f.seedUser("admin@x", domain.RoleAdmin, "c-default", false)
+	companyB := f.seedCompany("B")
+	f.seedApp("app-A", "c-default")
+	f.seedApp("app-B", companyB)
+
+	rr := f.do(f.authRequest(http.MethodGet, "/v1/meta/apps", nil, admin))
+	requireStatus(t, rr, http.StatusOK)
+
+	var body struct{ Apps []string }
+	decodeJSON(t, rr, &body)
+	if len(body.Apps) != 1 || body.Apps[0] != "app-A" {
+		t.Errorf("admin deveria ver só app-A, veio %+v", body.Apps)
+	}
+}
+
+func TestGetMyApps_SuperVeTodosOsApps(t *testing.T) {
+	f := newFixture(t)
+	super := f.seedUser("super@x", domain.RoleAdmin, "c-default", true)
+	companyB := f.seedCompany("B")
+	f.seedApp("app-A", "c-default")
+	f.seedApp("app-B", companyB)
+
+	rr := f.do(f.authRequest(http.MethodGet, "/v1/meta/apps", nil, super))
+	requireStatus(t, rr, http.StatusOK)
+
+	var body struct{ Apps []string }
+	decodeJSON(t, rr, &body)
+	if len(body.Apps) != 2 || body.Apps[0] != "app-A" || body.Apps[1] != "app-B" {
+		t.Errorf("super deveria ver os 2 apps ordenados, veio %+v", body.Apps)
+	}
+}
+
+func TestGetMyApps_SemAppsRetornaListaVazia(t *testing.T) {
+	f := newFixture(t)
+	viewer := f.seedUser("v@x", domain.RoleViewer, "c-default", false)
+
+	rr := f.do(f.authRequest(http.MethodGet, "/v1/meta/apps", nil, viewer))
+	requireStatus(t, rr, http.StatusOK)
+
+	var body struct{ Apps []string }
+	decodeJSON(t, rr, &body)
+	if body.Apps == nil {
+		t.Fatal("apps não deveria ser null")
+	}
+	if len(body.Apps) != 0 {
+		t.Errorf("sem apps a lista deveria ser vazia, veio %+v", body.Apps)
+	}
+}
+
+// -----------------------------------------------------------------------
 // PATCH /v1/issues/{fp} — requer editor+admin (não viewer)
 // -----------------------------------------------------------------------
 

@@ -20,6 +20,7 @@ demonstrar e explicar** cada parte da plataforma. Cada guia responde:
 
 | Guia | Rota | Público |
 |---|---|---|
+| [Seleção global de App](selecao-global-de-app.md) | barra superior (multi-app) | qualquer papel |
 | [Visão geral (overview)](visao-geral.md) | `/` | qualquer papel |
 | [Explorador de traces](traces.md) | `/traces` | qualquer papel |
 | [Sessões e timeline](sessoes.md) | `/sessions`, `/sessions/[id]` | qualquer papel |

@@ -28,6 +28,11 @@ const apiKeyContextKey contextKey = "ndovu.apikey"
 // (multi-tenancy Sprint E.3). nil = sem restrição (super-admin).
 const appScopeKey contextKey = "ndovu.appscope"
 
+// noAppsSentinel é injetada no escopo quando o usuário não pode ver nenhum
+// app (ex.: company sem apps). Queries com `app IN (sentinel)` devolvem zero
+// resultados sem precisar de branch especial no repositório.
+const noAppsSentinel = "__ndovu_no_apps__"
+
 // IdentityFrom recupera a identidade autenticada do contexto.
 func IdentityFrom(ctx context.Context) (domain.Identity, bool) {
 	id, ok := ctx.Value(identityKey).(domain.Identity)
@@ -166,7 +171,7 @@ func tenantScope(apps domain.AppStore, perms domain.UserAppPermissionStore, logg
 				return
 			}
 			if len(names) == 0 {
-				names = []string{"__ndovu_no_apps__"}
+				names = []string{noAppsSentinel}
 			}
 			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), appScopeKey, names)))
 		})

@@ -20,11 +20,13 @@ Cada linha expande e mostra o payload cru.
 
 1. Abra `/traces` — a janela default é **24h** e mostra os eventos mais
    recentes, 50 por página.
-2. Combine filtros na barra do topo: **Período**, **App**, **Tipo**,
+2. Combine filtros na barra do topo: **Período**, **Tipo**,
    **Funcionalidade**, **Usuário (userId)**, **Rota (endpoint)**,
-   **Busca livre**, checkbox **Somente erros**.
-3. Toda mudança de filtro vira querystring (`?range=7d&app=…`) — a URL
-   é o estado; compartilhe o link para reproduzir a mesma consulta.
+   **Busca livre**, checkbox **Somente erros**. O **App** vem do
+   [seletor global](selecao-global-de-app.md) e vale para todas as telas.
+3. Toda mudança de filtro vira querystring (`?range=7d&type=error`) — a URL
+   é o estado; compartilhe o link para reproduzir a mesma consulta. Links
+   antigos com `?app=…` ainda funcionam e promovem o app a escopo global.
 4. Clique **Consultar** para reforçar a aplicação ou **limpar** para
    zerar. Use **Views** (★) para salvar a combinação atual como
    [saved view](saved-views.md).

@@ -85,10 +85,10 @@ func (r *fakeReader) GetSession(context.Context, string) (domain.Session, error)
 func (r *fakeReader) SessionTimeline(context.Context, string) ([]domain.TraceEvent, error) {
 	return nil, nil
 }
-func (r *fakeReader) GetOverview(context.Context, time.Time, time.Time, string) (domain.Overview, error) {
+func (r *fakeReader) GetOverview(context.Context, time.Time, time.Time, string, []string) (domain.Overview, error) {
 	return domain.Overview{}, nil
 }
-func (r *fakeReader) GetFilterOptions(context.Context) (domain.FilterOptions, error) {
+func (r *fakeReader) GetFilterOptions(context.Context, []string) (domain.FilterOptions, error) {
 	return domain.FilterOptions{}, nil
 }
 func (r *fakeReader) FindIssues(context.Context, domain.IssueFilter) ([]domain.Issue, error) {

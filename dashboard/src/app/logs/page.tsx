@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui';
 import { api } from '@/lib/api';
+import { useAppScope } from '@/lib/app-scope';
 import { fmtDateTime } from '@/lib/time';
 
 function toLocalInput(d: Date): string {
@@ -19,21 +20,20 @@ function iso(value: string): string {
 const SEVERITIES = ['', 'trace', 'debug', 'info', 'warn', 'error', 'fatal'];
 
 export default function LogsPage() {
+  const { selectedApp } = useAppScope();
   const [from, setFrom] = useState(() => toLocalInput(new Date(Date.now() - 60 * 60 * 1000)));
   const [to, setTo] = useState(() => toLocalInput(new Date()));
-  const [app, setApp] = useState('');
   const [service, setService] = useState('');
   const [severity, setSeverity] = useState('');
   const [search, setSearch] = useState('');
 
-  const { data: options } = useQuery({ queryKey: ['filters'], queryFn: api.filterOptions });
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['logs', from, to, app, service, severity, search],
+    queryKey: ['logs', from, to, selectedApp, service, severity, search],
     queryFn: () =>
       api.logs({
         from: iso(from),
         to: iso(to),
-        app,
+        app: selectedApp,
         service,
         severity,
         q: search,
@@ -61,7 +61,7 @@ export default function LogsPage() {
         </button>
       </div>
 
-      <div className="grid gap-2 rounded-lg border border-line bg-surface p-3 md:grid-cols-6">
+      <div className="grid gap-2 rounded-lg border border-line bg-surface p-3 md:grid-cols-5">
         <label className="text-xs text-muted">
           De
           <input
@@ -79,21 +79,6 @@ export default function LogsPage() {
             onChange={(e) => setTo(e.target.value)}
             className="mt-1 w-full rounded border border-line bg-canvas px-2 py-1 text-sm text-ink"
           />
-        </label>
-        <label className="text-xs text-muted">
-          App
-          <select
-            value={app}
-            onChange={(e) => setApp(e.target.value)}
-            className="mt-1 w-full rounded border border-line bg-canvas px-2 py-1 text-sm text-ink"
-          >
-            <option value="">todos</option>
-            {(options?.apps ?? []).map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </select>
         </label>
         <label className="text-xs text-muted">
           Serviço

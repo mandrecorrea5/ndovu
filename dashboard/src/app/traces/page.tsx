@@ -1,26 +1,48 @@
 'use client';
 
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { useSearchParams } from 'next/navigation';
-import { Suspense, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { EventRow, EventsTableHead } from '@/components/EventRow';
 import { FiltersBar } from '@/components/FiltersBar';
 import { EmptyState, ErrorState, LoadingState } from '@/components/ui';
 import { api } from '@/lib/api';
+import { useAppScope } from '@/lib/app-scope';
 import { rangeToInterval } from '@/lib/time';
 import type { EventQuery, TraceEvent } from '@/lib/types';
 
 function TracesExplorer() {
   const params = useSearchParams();
+  const router = useRouter();
+  const { selectedApp, setSelectedApp } = useAppScope();
   const [pages, setPages] = useState<TraceEvent[][]>([]);
   const [cursor, setCursor] = useState<string | undefined>(undefined);
+
+  // Deep link com ?app= (ex.: "ver eventos" de uma issue) tem prioridade no
+  // primeiro render; em seguida ele é promovido a escopo global e sai da URL.
+  const urlApp = params.get('app') ?? '';
+  const effectiveApp = urlApp || selectedApp;
+  const syncedApp = useRef('');
+
+  useEffect(() => {
+    if (!urlApp) {
+      syncedApp.current = '';
+      return;
+    }
+    if (syncedApp.current === urlApp) return;
+    syncedApp.current = urlApp;
+    if (urlApp !== selectedApp) setSelectedApp(urlApp);
+    const next = new URLSearchParams(params.toString());
+    next.delete('app');
+    router.replace(`?${next.toString()}`);
+  }, [urlApp, selectedApp, setSelectedApp, params, router]);
 
   const query: EventQuery = (() => {
     const { from, to } = rangeToInterval(params.get('range') ?? '24h');
     return {
       from,
       to,
-      app: params.get('app') ?? undefined,
+      app: effectiveApp || undefined,
       userId: params.get('userId') ?? undefined,
       sessionId: params.get('sessionId') ?? undefined,
       type: params.get('type') ?? undefined,
@@ -32,7 +54,7 @@ function TracesExplorer() {
     };
   })();
 
-  const queryKey = ['events', params.toString(), cursor];
+  const queryKey = ['events', params.toString(), effectiveApp, cursor];
   const { data, isLoading, error, isFetching } = useQuery({
     queryKey,
     queryFn: async () => {
@@ -52,8 +74,8 @@ function TracesExplorer() {
     }
   };
 
-  // Filtro mudou (querystring) ⇒ zera o acumulado
-  const paramsKey = params.toString();
+  // Filtro mudou (querystring ou app global) ⇒ zera o acumulado
+  const paramsKey = `${params.toString()}|${effectiveApp}`;
   const [lastParams, setLastParams] = useState(paramsKey);
   if (paramsKey !== lastParams) {
     setLastParams(paramsKey);
