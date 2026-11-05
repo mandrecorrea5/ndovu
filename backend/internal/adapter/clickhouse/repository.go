@@ -197,6 +197,11 @@ const eventColumns = `
 
 const errorCond = `(error_code != '' OR error_message != '' OR event_type = 'error')`
 
+// noiseRouteCond são caminhos de infraestrutura que não são rota de produto.
+// Sem eles o top 10 é tomado por scrape de Prometheus e health check do
+// orquestrador, escondendo as rotas que o usuário de fato navegou.
+const noiseRouteCond = `'/metrics', '/health', '/healthz', '/readyz', '/livez', '/ping', '/favicon.ico', '/robots.txt'`
+
 // FindEvents monta a consulta dinâmica com SQL sempre parametrizado.
 func (r *Repository) FindEvents(ctx context.Context, f domain.EventFilter) (domain.EventPage, error) {
 	q := newQueryBuilder("SELECT" + eventColumns + " FROM trace_events FINAL")
@@ -428,9 +433,10 @@ func (r *Repository) TraceTimeline(ctx context.Context, traceID string) ([]domai
 // GetOverview agrega métricas da janela: totais, série temporal, top rotas e erros.
 func (r *Repository) GetOverview(ctx context.Context, from, to time.Time, app string, appScope []string) (domain.Overview, error) {
 	o := domain.Overview{
-		Series:    []domain.TimeBucket{},
-		TopRoutes: []domain.RouteStat{},
-		TopErrors: []domain.ErrorStat{},
+		Series:     []domain.TimeBucket{},
+		TopRoutes:  []domain.RouteStat{},
+		TopScreens: []domain.ScreenStat{},
+		TopErrors:  []domain.ErrorStat{},
 	}
 	appFilter := " AND ($3 = '' OR app = $3)" + appScopeCond(appScope)
 
@@ -485,15 +491,42 @@ func (r *Repository) GetOverview(ctx context.Context, from, to time.Time, app st
 		return o, err
 	}
 
+	// Top rotas une as duas origens de chamada HTTP que o produto recebe:
+	//   - trace_events: eventos `http_request` do SDK (fetch no navegador);
+	//   - otel_spans: spans SERVER do OTel da API (http.request.method/url.path).
+	// Sem o union, um app que só exporta OTLP (elama-api, smuls-api) nunca
+	// aparece aqui mesmo com tráfego real.
+	// Caminhos de infra (scrape de métrica, health check, favicon) ficam de
+	// fora: dominariam o top 10 sem representar rota de produto.
 	rows, err = r.conn.Query(ctx, `
-		SELECT http_url,
+		SELECT url,
 		       toUInt64(count()) AS c,
-		       toUInt64(countIf(error_code != '' OR error_message != '')) AS errs,
-		       coalesce(avg(duration_ms), 0) AS avg_ms,
-		       coalesce(quantile(0.95)(duration_ms), 0) AS p95_ms
-		FROM trace_events FINAL
-		WHERE occurred_at >= $1 AND occurred_at < $2 AND http_url != ''`+appFilter+`
-		GROUP BY http_url ORDER BY c DESC LIMIT 10`,
+		       toUInt64(countIf(is_err)) AS errs,
+		       coalesce(avg(ms), 0) AS avg_ms,
+		       coalesce(quantile(0.95)(ms), 0) AS p95_ms
+		FROM (
+			SELECT http_url AS url,
+			       (error_code != '' OR error_message != '') AS is_err,
+			       ifNull(toFloat64(duration_ms), 0) AS ms
+			FROM trace_events FINAL
+			WHERE occurred_at >= $1 AND occurred_at < $2 AND http_url != ''`+appFilter+`
+			UNION ALL
+			SELECT coalesce(
+			           nullIf(span_attrs['http.route'], ''),
+			           nullIf(span_attrs['url.path'], ''),
+			           nullIf(span_attrs['http.target'], '')
+			       ) AS url,
+			       (toUInt16OrZero(span_attrs['http.response.status_code']) >= 500
+			        OR toUInt16OrZero(span_attrs['http.status_code']) >= 500
+			        OR lower(status_code) = 'error') AS is_err,
+			       toFloat64(duration_ns) / 1e6 AS ms
+			FROM otel_spans FINAL
+			WHERE start_time >= $1 AND start_time < $2
+			  AND kind = 'server'
+			  AND (span_attrs['http.request.method'] != '' OR span_attrs['http.method'] != '')`+appFilter+`
+		)
+		WHERE url != '' AND url NOT IN (`+noiseRouteCond+`)
+		GROUP BY url ORDER BY c DESC LIMIT 10`,
 		from, to, app)
 	if err != nil {
 		return o, fmt.Errorf("agregando rotas: %w", err)
@@ -507,6 +540,36 @@ func (r *Repository) GetOverview(ctx context.Context, from, to time.Time, app st
 		}
 		rs.Count, rs.Errors = int(c), int(errs) //nolint:gosec
 		o.TopRoutes = append(o.TopRoutes, rs)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return o, err
+	}
+
+	// Top telas: as rotas que o usuário navegou de fato (page_view.screen).
+	// É eixo diferente de Top rotas — lá é chamada HTTP, aqui é navegação.
+	rows, err = r.conn.Query(ctx, `
+		SELECT screen,
+		       toUInt64(count()) AS visits,
+		       toUInt64(uniqExact(session_id)) AS sessions,
+		       toUInt64(uniqExactIf(user_id, user_id != '')) AS users
+		FROM trace_events FINAL
+		WHERE occurred_at >= $1 AND occurred_at < $2
+		  AND event_type = 'page_view' AND screen != ''`+appFilter+`
+		GROUP BY screen ORDER BY visits DESC LIMIT 10`,
+		from, to, app)
+	if err != nil {
+		return o, fmt.Errorf("agregando telas: %w", err)
+	}
+	for rows.Next() {
+		var ss domain.ScreenStat
+		var visits, sessions, users uint64
+		if err := rows.Scan(&ss.Screen, &visits, &sessions, &users); err != nil {
+			rows.Close()
+			return o, err
+		}
+		ss.Visits, ss.Sessions, ss.Users = int(visits), int(sessions), int(users) //nolint:gosec
+		o.TopScreens = append(o.TopScreens, ss)
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {

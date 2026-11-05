@@ -18,6 +18,35 @@ Como a correção é do lado do servidor, ela alcança quem **não** atualizou: 
 parado na 1.0.0 passa a aparecer como `1.0.0` no dado. Consulte com
 `JSONExtractString(session_attrs, 'sdkVersion')`.
 
+## 1.4.1 — 2026-11-04
+
+`@ndovu/sdk` 1.4.1 · node `1.2.0-node` (inalterado) · browser `1.3.1` ·
+react-native `1.1.0-rn` (inalterado) · go (inalterado)
+
+### Browser: `instrumentFetch` sem corpos, para app com dado sensível
+
+Nova opção `captureBodies` (default `true`, então quem não passa nada não
+muda de comportamento). Com `captureBodies: false` a chamada vira
+`http_request` com método, rota, status e duração, mas **sem**
+`requestBody`/`responseBody`.
+
+Motivo: `redact` mascara por **nome** de chave. Num app financeiro, o corpo
+de `GET /households/me` traz saldo e descrição de transação em chaves
+inofensivas (`amount`, `description`) — passaria inteiro. Sem corpo, a rota
+continua no "Top rotas" do Ndovu e nenhum valor sai do browser.
+
+```js
+ndovu.instrumentFetch({ captureBodies: false });
+```
+
+### Por que isso importa no dashboard
+
+Os apps que só exportam OTLP (API Node/Go) não geravam evento `http_request`
+nenhum; e os que usam o SDK não chamavam `instrumentFetch`. Resultado: "Top
+rotas" vazio com evento chegando. O backend agora também agrega spans OTLP
+`SERVER` na mesma tabela, e a visão geral ganhou o painel **Top telas**
+(`page_view.screen`).
+
 ## 1.4.0 — 2026-10-21
 
 `@ndovu/sdk` 1.4.0 · node `1.2.0-node` · browser `1.3.0` (inalterado) ·

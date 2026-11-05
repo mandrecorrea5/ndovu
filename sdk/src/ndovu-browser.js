@@ -20,7 +20,7 @@
  *   ndovu.instrumentFetch(); // captura fetch() automaticamente
  */
 
-const SDK_VERSION = '1.3.0';
+const SDK_VERSION = '1.3.1';
 const REDACT_KEYS = /pass(word)?|senha|token|secret|authorization|cvv|card|cart[aã]o/i;
 const BREADCRUMB_LIMIT = 30;
 // 401/403/400/413 são erro de configuração ou de contrato: reenviar não
@@ -269,11 +269,17 @@ export function createNdovu({
      * traceparent para cada requisição e o adiciona como header outgoing —
      * quando o backend também estiver instrumentado com OpenTelemetry, os
      * traces frontend↔backend ficam correlacionados pelo mesmo trace_id.
+     *
+     * `captureBodies: false` registra método, rota, status e duração sem
+     * request/response body. É o modo para app com dado sensível (financeiro,
+     * saúde): o `redact` só mascara por NOME de chave, então corpo de resposta
+     * com saldo/extrato passaria. Sem body não há PII e a rota continua útil.
      */
     instrumentFetch({
       nameFor = (u) => u.split('?')[0],
       ignore = [endpoint],
       propagateTraceparent = true,
+      captureBodies = true,
     } = {}) {
       const original = window.fetch.bind(window);
       const self = this;
@@ -284,10 +290,12 @@ export function createNdovu({
         const started = performance.now();
         const method = (init.method ?? 'GET').toUpperCase();
         let requestBody;
-        try {
-          requestBody = init.body ? JSON.parse(init.body) : undefined;
-        } catch {
-          requestBody = undefined;
+        if (captureBodies) {
+          try {
+            requestBody = init.body ? JSON.parse(init.body) : undefined;
+          } catch {
+            requestBody = undefined;
+          }
         }
 
         // Gera trace_id/span_id e propaga como header outgoing (opt-out).
@@ -306,10 +314,12 @@ export function createNdovu({
           const res = await original(input, nextInit);
           const durationMs = Math.round(performance.now() - started);
           let responseBody;
-          try {
-            responseBody = await res.clone().json();
-          } catch {
-            responseBody = undefined;
+          if (captureBodies) {
+            try {
+              responseBody = await res.clone().json();
+            } catch {
+              responseBody = undefined;
+            }
           }
           const failed = !res.ok;
           self.httpRequest(nameFor(url), {

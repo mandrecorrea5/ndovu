@@ -91,6 +91,11 @@ Em Next.js App Router — inicialize no client component raiz
   adiciona `traceparent: 00-<32hex>-<16hex>-01` na requisição
   outgoing e grava os mesmos IDs no evento. Backend com OpenTelemetry
   usa o mesmo `trace_id` — frontend↔backend correlacionados sem lift.
+- **Sem corpo, se precisar**: `instrumentFetch({ captureBodies: false })`
+  registra método, rota, status e duração sem `requestBody`/`responseBody`.
+  Use em app com dado sensível (financeiro, saúde) — o `redact` só mascara
+  por **nome** de chave, então corpo de resposta com saldo/extrato passaria
+  intacto. Sem corpo não há PII e a rota continua aparecendo em Top rotas.
 - **Snapshot on error**: `error()` gera `eventId`, envia o evento e
   dispara `sendSnapshot()` fire-and-forget para `POST /v1/snapshots`
   com HTML sanitizado (scripts removidos, inputs sensíveis mascarados,

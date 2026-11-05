@@ -992,21 +992,33 @@ Retorna:
   "totalEvents": 123456,
   "totalSessions": 8901,
   "totalUsers": 2340,
+  "totalErrors": 2840,
   "errorRate": 0.023,
-  "buckets": [
-    {"t": "2026-08-16T00:00:00Z", "events": 5000, "errors": 42, "sessions": 300},
+  "avgDurationMs": 41.7,
+  "series": [
+    {"bucket": "2026-08-16T00:00:00Z", "total": 5000, "errors": 42},
     ...
   ],
   "topRoutes": [
-    {"route": "/api/faturas", "count": 2340, "p95": 220},
+    {"url": "/api/faturas", "count": 2340, "errors": 12, "avgMs": 41, "p95Ms": 220},
+    ...
+  ],
+  "topScreens": [
+    {"screen": "/login", "visits": 900, "sessions": 820, "users": 610},
     ...
   ],
   "topErrors": [
-    {"code": "AUTH_401", "count": 88},
+    {"code": "AUTH_401", "message": "unauthorized", "count": 88},
     ...
   ]
 }
 ```
+
+`topRoutes` une duas origens de chamada HTTP: eventos `http_request` do SDK
+(URL de `http.url`) e spans OTLP `SERVER` da API (`http.request.method` +
+`url.path`/`http.route`). Caminhos de infraestrutura (`/metrics`, `/health`,
+`/readyz`, `/livez`, `/ping`, `/favicon.ico`, `/robots.txt`) ficam de fora.
+`topScreens` é a navegação do usuário: `page_view.screen` agrupado por rota.
 
 ### 14.2. Web Vitals
 

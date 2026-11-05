@@ -1,6 +1,6 @@
 {
   "name": "@ndovu/sdk",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "SDKs de referência do contrato v1 do Ndovu — browser, Next.js, Node e React Native. Dependências zero.",
   "type": "module",
   "license": "UNLICENSED",

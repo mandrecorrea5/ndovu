@@ -75,6 +75,48 @@ export default function OverviewPage() {
 
           <div className="grid gap-4 lg:grid-cols-2">
             <section className="card px-4 py-3">
+              <h2 className="mb-2 text-sm font-medium text-ink-2">Top telas</h2>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs uppercase tracking-wide text-muted">
+                    <th className="py-1.5 font-medium">Tela</th>
+                    <th className="py-1.5 text-right font-medium">Visitas</th>
+                    <th className="py-1.5 text-right font-medium">Sessões</th>
+                    <th className="py-1.5 text-right font-medium">Usuários</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.topScreens.map((s) => (
+                    <tr key={s.screen} className="border-t border-hairline">
+                      <td className="max-w-52 py-1.5 pr-2">
+                        <Link
+                          href={`/traces?type=page_view&screen=${encodeURIComponent(s.screen)}`}
+                          className="mono block truncate text-xs text-accent hover:underline"
+                        >
+                          {s.screen}
+                        </Link>
+                      </td>
+                      <td className="tabular py-1.5 text-right">{fmtNumber(s.visits)}</td>
+                      <td className="tabular py-1.5 text-right text-ink-2">
+                        {fmtNumber(s.sessions)}
+                      </td>
+                      <td className="tabular py-1.5 text-right text-ink-2">
+                        {fmtNumber(s.users)}
+                      </td>
+                    </tr>
+                  ))}
+                  {data.topScreens.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="py-6 text-center text-muted">
+                        Sem navegação (<code>page_view</code>) na janela.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </section>
+
+            <section className="card px-4 py-3">
               <h2 className="mb-2 text-sm font-medium text-ink-2">Top rotas</h2>
               <table className="w-full text-sm">
                 <thead>
@@ -119,45 +161,45 @@ export default function OverviewPage() {
                 </tbody>
               </table>
             </section>
-
-            <section className="card px-4 py-3">
-              <h2 className="mb-2 text-sm font-medium text-ink-2">Top erros</h2>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-xs uppercase tracking-wide text-muted">
-                    <th className="py-1.5 font-medium">Código</th>
-                    <th className="py-1.5 font-medium">Mensagem</th>
-                    <th className="py-1.5 text-right font-medium">Ocorrências</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.topErrors.map((e) => (
-                    <tr key={e.code} className="border-t border-hairline">
-                      <td className="py-1.5 pr-2">
-                        <Link
-                          href={`/traces?onlyErrors=true&search=${encodeURIComponent(e.code)}`}
-                          className="mono text-xs text-critical hover:underline"
-                        >
-                          {e.code}
-                        </Link>
-                      </td>
-                      <td className="max-w-64 truncate py-1.5 pr-2 text-xs text-ink-2">
-                        {e.message || '—'}
-                      </td>
-                      <td className="tabular py-1.5 text-right">{fmtNumber(e.count)}</td>
-                    </tr>
-                  ))}
-                  {data.topErrors.length === 0 ? (
-                    <tr>
-                      <td colSpan={3} className="py-6 text-center text-muted">
-                        Nenhum erro na janela. 🎉
-                      </td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </section>
           </div>
+
+          <section className="card px-4 py-3">
+            <h2 className="mb-2 text-sm font-medium text-ink-2">Top erros</h2>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs uppercase tracking-wide text-muted">
+                  <th className="py-1.5 font-medium">Código</th>
+                  <th className="py-1.5 font-medium">Mensagem</th>
+                  <th className="py-1.5 text-right font-medium">Ocorrências</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.topErrors.map((e) => (
+                  <tr key={e.code} className="border-t border-hairline">
+                    <td className="py-1.5 pr-2">
+                      <Link
+                        href={`/traces?onlyErrors=true&search=${encodeURIComponent(e.code)}`}
+                        className="mono text-xs text-critical hover:underline"
+                      >
+                        {e.code}
+                      </Link>
+                    </td>
+                    <td className="max-w-64 truncate py-1.5 pr-2 text-xs text-ink-2">
+                      {e.message || '—'}
+                    </td>
+                    <td className="tabular py-1.5 text-right">{fmtNumber(e.count)}</td>
+                  </tr>
+                ))}
+                {data.topErrors.length === 0 ? (
+                  <tr>
+                    <td colSpan={3} className="py-6 text-center text-muted">
+                      Nenhum erro na janela. 🎉
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </section>
         </>
       ) : null}
     </div>

@@ -18,6 +18,7 @@ const VIEW_FILTER_KEYS = [
   'feature',
   'userId',
   'route',
+  'screen',
   'search',
   'onlyErrors',
 ] as const;
@@ -35,9 +36,11 @@ export function FiltersBar() {
   const [search, setSearch] = useState(params.get('search') ?? '');
   const [userId, setUserId] = useState(params.get('userId') ?? '');
   const [route, setRoute] = useState(params.get('route') ?? '');
+  const [screen, setScreen] = useState(params.get('screen') ?? '');
   useEffect(() => setSearch(params.get('search') ?? ''), [params]);
   useEffect(() => setUserId(params.get('userId') ?? ''), [params]);
   useEffect(() => setRoute(params.get('route') ?? ''), [params]);
+  useEffect(() => setScreen(params.get('screen') ?? ''), [params]);
 
   const setParam = useCallback(
     (patch: Record<string, string>) => {
@@ -133,6 +136,23 @@ export function FiltersBar() {
         className="w-44"
         onSubmit={(e) => {
           e.preventDefault();
+          setParam({ screen });
+        }}
+      >
+        <Field label="Tela (page_view)" htmlFor="f-screen">
+          <Input
+            id="f-screen"
+            value={screen}
+            placeholder="ex.: /login"
+            onChange={(e) => setScreen(e.target.value)}
+          />
+        </Field>
+      </form>
+
+      <form
+        className="w-44"
+        onSubmit={(e) => {
+          e.preventDefault();
           setParam({ search });
         }}
       >
@@ -155,7 +175,7 @@ export function FiltersBar() {
       </div>
 
       <div className="mb-0.5 flex items-center gap-2">
-        <Button variant="primary" onClick={() => setParam({ search, userId, route })}>
+        <Button variant="primary" onClick={() => setParam({ search, userId, route, screen })}>
           Consultar
         </Button>
         <Button variant="ghost" size="sm" onClick={() => router.replace('?')}>

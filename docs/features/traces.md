@@ -22,8 +22,11 @@ Cada linha expande e mostra o payload cru.
    recentes, 50 por página.
 2. Combine filtros na barra do topo: **Período**, **Tipo**,
    **Funcionalidade**, **Usuário (userId)**, **Rota (endpoint)**,
-   **Busca livre**, checkbox **Somente erros**. O **App** vem do
-   [seletor global](selecao-global-de-app.md) e vale para todas as telas.
+   **Tela (page_view)**, **Busca livre**, checkbox **Somente erros**. O
+   **App** vem do [seletor global](selecao-global-de-app.md) e vale para
+   todas as telas. `Rota` casa `http.url` (chamada HTTP); `Tela` casa
+   `screen` (navegação) — é o filtro que o painel **Top telas** usa ao
+   abrir o explorador.
 3. Toda mudança de filtro vira querystring (`?range=7d&type=error`) — a URL
    é o estado; compartilhe o link para reproduzir a mesma consulta. Links
    antigos com `?app=…` ainda funcionam e promovem o app a escopo global.

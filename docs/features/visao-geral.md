@@ -41,7 +41,14 @@ quedas e regressões sem precisar filtrar nada.
     HTTP requests, ações medidas).
 - **Série temporal** dos eventos, com bucket automático conforme a
   janela (5min → 30d).
+- **Top telas** — rotas que o usuário navegou (`page_view.screen`), com
+  visitas, sessões e usuários distintos. Clique numa tela para abrir o
+  explorador já filtrado por ela.
 - **Top rotas** (média + p95 de duração) — quais URLs estão mais lentas.
+  Junta as duas origens de chamada HTTP: eventos `http_request` do SDK
+  (fetch no navegador) e spans OTLP `SERVER` da API instrumentada com
+  OpenTelemetry. Caminhos de infraestrutura (`/metrics`, `/health`,
+  `/readyz`, `/ping`, `/favicon.ico`, `/robots.txt`) não entram no ranking.
 - **Top erros** — códigos/mensagens mais frequentes na janela.
 
 ## Como demonstrar

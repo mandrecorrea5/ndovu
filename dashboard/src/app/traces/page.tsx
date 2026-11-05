@@ -48,6 +48,7 @@ function TracesExplorer() {
       type: params.get('type') ?? undefined,
       feature: params.get('feature') ?? undefined,
       route: params.get('route') ?? undefined,
+      screen: params.get('screen') ?? undefined,
       onlyErrors: params.get('onlyErrors') ?? undefined,
       search: params.get('search') ?? undefined,
       limit: '50',

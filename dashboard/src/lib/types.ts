@@ -118,6 +118,14 @@ export interface ErrorStat {
   count: number;
 }
 
+/** Tela navegada (page_view) agregada na janela. */
+export interface ScreenStat {
+  screen: string;
+  visits: number;
+  sessions: number;
+  users: number;
+}
+
 export interface Overview {
   totalEvents: number;
   totalSessions: number;
@@ -127,6 +135,7 @@ export interface Overview {
   avgDurationMs: number;
   series: TimeBucket[];
   topRoutes: RouteStat[];
+  topScreens: ScreenStat[];
   topErrors: ErrorStat[];
 }
 
@@ -449,6 +458,7 @@ export interface EventQuery {
   feature?: string;
   name?: string;
   route?: string;
+  screen?: string;
   statusMin?: string;
   statusMax?: string;
   onlyErrors?: string;

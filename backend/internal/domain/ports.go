@@ -89,6 +89,14 @@ type RouteStat struct {
 	P95Ms  float64 `json:"p95Ms"`
 }
 
+// ScreenStat agrega uma tela navegada (page_view) na janela.
+type ScreenStat struct {
+	Screen   string `json:"screen"`
+	Visits   int    `json:"visits"`
+	Sessions int    `json:"sessions"`
+	Users    int    `json:"users"`
+}
+
 // ErrorStat agrega um código de erro.
 type ErrorStat struct {
 	Code    string `json:"code"`
@@ -106,6 +114,7 @@ type Overview struct {
 	AvgDurationMs float64      `json:"avgDurationMs"`
 	Series        []TimeBucket `json:"series"`
 	TopRoutes     []RouteStat  `json:"topRoutes"`
+	TopScreens    []ScreenStat `json:"topScreens"`
 	TopErrors     []ErrorStat  `json:"topErrors"`
 }
 

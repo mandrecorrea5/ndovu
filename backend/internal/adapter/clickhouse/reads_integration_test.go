@@ -60,9 +60,47 @@ func TestClickHouse_GetOverview(t *testing.T) {
 			Type: domain.EventAction, Name: "click",
 			OccurredAt: now.Add(2 * time.Second),
 		},
+		domain.TraceEvent{
+			ID: mustUUID(t), SessionID: sid, App: "portal", UserID: "u-1",
+			Type: domain.EventPageView, Name: "tela_/login", Screen: "/login",
+			OccurredAt: now.Add(3 * time.Second),
+		},
 	)
 	_ = dur100
 	_ = dur200
+
+	// Span SERVER de OTLP: chamada HTTP que nunca virou evento `http_request`
+	// (API instrumentada com OpenTelemetry, não com o SDK de browser).
+	// /metrics entra junto para provar que o ruído de infra é filtrado.
+	if _, err := repo.SaveSpans(ctx, []domain.SpanBatch{{
+		App: "portal",
+		Spans: []domain.Span{
+			{
+				App: "portal", TraceID: mustUUID(t), SpanID: mustUUID(t),
+				Name: "GET", Kind: "server", ServiceName: "portal-api",
+				StartTime: now, DurationNs: 42 * int64(time.Millisecond),
+				StatusCode: "unset", ReceivedAt: now,
+				Attrs: map[string]string{
+					"http.request.method":       "GET",
+					"url.path":                  "/sync/pull",
+					"http.response.status_code": "200",
+				},
+			},
+			{
+				App: "portal", TraceID: mustUUID(t), SpanID: mustUUID(t),
+				Name: "GET", Kind: "server", ServiceName: "portal-api",
+				StartTime: now, DurationNs: 2 * int64(time.Millisecond),
+				StatusCode: "unset", ReceivedAt: now,
+				Attrs: map[string]string{
+					"http.request.method":       "GET",
+					"url.path":                  "/metrics",
+					"http.response.status_code": "200",
+				},
+			},
+		},
+	}}); err != nil {
+		t.Fatalf("save spans: %v", err)
+	}
 
 	from := now.Add(-time.Hour)
 	to := now.Add(time.Hour)
@@ -70,14 +108,35 @@ func TestClickHouse_GetOverview(t *testing.T) {
 	if err != nil {
 		t.Fatalf("overview: %v", err)
 	}
-	if ov.TotalEvents != 3 {
-		t.Errorf("total events esperado 3, veio %d", ov.TotalEvents)
+	if ov.TotalEvents != 4 {
+		t.Errorf("total events esperado 4, veio %d", ov.TotalEvents)
 	}
 	if ov.TotalErrors < 1 {
 		t.Errorf("total errors deveria ser >=1, veio %d", ov.TotalErrors)
 	}
 	if ov.TotalSessions != 1 {
 		t.Errorf("sessions esperado 1, veio %d", ov.TotalSessions)
+	}
+
+	// Top rotas: as duas origens (evento e span) no mesmo ranking, sem /metrics.
+	routes := map[string]domain.RouteStat{}
+	for _, r := range ov.TopRoutes {
+		routes[r.URL] = r
+	}
+	if _, ok := routes["/sync/pull"]; !ok {
+		t.Errorf("rota de span OTLP ausente do Top rotas: %+v", ov.TopRoutes)
+	}
+	if _, ok := routes["/metrics"]; ok {
+		t.Errorf("/metrics deveria ser filtrado do Top rotas: %+v", ov.TopRoutes)
+	}
+	if r, ok := routes["/faturas"]; !ok || r.Count != 1 {
+		t.Errorf("rota de evento HTTP ausente/errada: %+v", ov.TopRoutes)
+	}
+
+	// Top telas: navegação por page_view.screen.
+	if len(ov.TopScreens) != 1 || ov.TopScreens[0].Screen != "/login" ||
+		ov.TopScreens[0].Visits != 1 || ov.TopScreens[0].Users != 1 {
+		t.Errorf("top telas inesperado: %+v", ov.TopScreens)
 	}
 }
 
