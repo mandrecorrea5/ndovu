@@ -33,7 +33,7 @@ type OTLPOptions struct {
 //
 // Sem otelhttp de propósito: o Ndovu pode exportar os próprios traces para
 // este receptor, e rastrear o recebimento criaria spans a cada exportação.
-func NewOTLPRouter(ingest *usecase.SpanIngestService, keys *usecase.APIKeyService, metrics *platform.Metrics, logger *slog.Logger, opts OTLPOptions) http.Handler {
+func NewOTLPRouter(ingest *usecase.SpanIngestService, logIngest *usecase.LogIngestService, keys *usecase.APIKeyService, metrics *platform.Metrics, logger *slog.Logger, opts OTLPOptions) http.Handler {
 	// Zero = não configurado (Config montado à mão em teste): defaults da
 	// config, nunca um teto literal de 0.
 	if opts.MaxBodyBytes <= 0 {
@@ -45,7 +45,7 @@ func NewOTLPRouter(ingest *usecase.SpanIngestService, keys *usecase.APIKeyServic
 	if opts.MaxSpanAge <= 0 {
 		opts.MaxSpanAge = 30 * 24 * time.Hour
 	}
-	h := &otlpHandler{ingest: ingest, keys: keys, metrics: metrics, logger: logger, opts: opts, now: time.Now}
+	h := &otlpHandler{ingest: ingest, logs: logIngest, keys: keys, metrics: metrics, logger: logger, opts: opts, now: time.Now}
 	r := chi.NewRouter()
 	r.Use(recoverer(logger))
 	r.Use(requestLogger(logger, metrics))
@@ -53,11 +53,13 @@ func NewOTLPRouter(ingest *usecase.SpanIngestService, keys *usecase.APIKeyServic
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	r.Post("/v1/traces", h.PostTraces)
+	r.Post("/v1/logs", h.PostLogs)
 	return r
 }
 
 type otlpHandler struct {
 	ingest  *usecase.SpanIngestService
+	logs    *usecase.LogIngestService
 	keys    *usecase.APIKeyService
 	metrics *platform.Metrics
 	logger  *slog.Logger
@@ -120,6 +122,74 @@ func (h *otlpHandler) PostTraces(w http.ResponseWriter, r *http.Request) {
 	h.count("ndovu_otlp_spans_rejected_total", "Spans OTLP recusados (partial_success)", key.App, res.Rejected)
 
 	out, err := otlp.EncodeResponse(enc, res.Rejected, res.Reason)
+	if err != nil {
+		h.fail(w, enc, http.StatusInternalServerError, codes.Internal, "erro ao montar a resposta")
+		return
+	}
+	w.Header().Set("Content-Type", enc.ContentType())
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(out)
+}
+
+// PostLogs recebe um ExportLogsServiceRequest (Fase 2). Mesma autenticação,
+// flag allow_otlp e limites do /v1/traces.
+func (h *otlpHandler) PostLogs(w http.ResponseWriter, r *http.Request) {
+	ctx := platform.WithoutTracing(r.Context())
+	enc, ok := otlp.EncodingFor(r.Header.Get("Content-Type"))
+	if !ok {
+		h.fail(w, otlp.Protobuf, http.StatusUnsupportedMediaType, codes.InvalidArgument,
+			"Content-Type deve ser application/x-protobuf ou application/json")
+		return
+	}
+	if h.logs == nil {
+		h.fail(w, enc, http.StatusServiceUnavailable, codes.Unavailable,
+			"receptor de logs desligado neste backend de stream")
+		return
+	}
+
+	key, err := h.keys.Validate(ctx, r.Header.Get("X-Api-Key"))
+	if err != nil {
+		if errors.Is(err, domain.ErrUnauthorized) {
+			h.fail(w, enc, http.StatusUnauthorized, codes.Unauthenticated, "x-api-key ausente, inválida ou revogada")
+			return
+		}
+		h.fail(w, enc, http.StatusServiceUnavailable, codes.Unavailable, "validação da chave indisponível")
+		return
+	}
+	if !key.AllowOTLP {
+		h.fail(w, enc, http.StatusForbidden, codes.PermissionDenied,
+			fmt.Sprintf("o app %q não aceita OTLP — marque-o como app de servidor no Ndovu", key.App))
+		return
+	}
+	if !h.keys.Allow(key) {
+		h.count("ndovu_otlp_rate_limited_total", "Exportações OTLP recusadas por rate limit", key.App, 1)
+		w.Header().Set("Retry-After", "1")
+		h.fail(w, enc, http.StatusTooManyRequests, codes.ResourceExhausted, "rate limit da chave excedido")
+		return
+	}
+
+	body, status, msg := h.readBody(w, r)
+	if status != 0 {
+		h.fail(w, enc, status, codes.InvalidArgument, msg)
+		return
+	}
+	ld, err := otlp.DecodeLogs(body, enc)
+	if err != nil {
+		h.fail(w, enc, http.StatusBadRequest, codes.InvalidArgument, err.Error())
+		return
+	}
+
+	res := otlp.ToLogs(ld, key.App, h.now().UTC(), otlp.Window{MaxAge: h.opts.MaxSpanAge, MaxFuture: time.Hour})
+	if err := h.logs.Ingest(ctx, key.App, res.Logs); err != nil {
+		h.logger.ErrorContext(ctx, "otlp: falha ao enfileirar logs", "app", key.App, "err", err)
+		w.Header().Set("Retry-After", "5")
+		h.fail(w, enc, http.StatusServiceUnavailable, codes.Unavailable, "buffer de ingestão indisponível — reenvie")
+		return
+	}
+	h.count("ndovu_otlp_logs_received_total", "Logs OTLP aceitos", key.App, len(res.Logs))
+	h.count("ndovu_otlp_logs_rejected_total", "Logs OTLP recusados (partial_success)", key.App, res.Rejected)
+
+	out, err := otlp.EncodeLogsResponse(enc, res.Rejected, res.Reason)
 	if err != nil {
 		h.fail(w, enc, http.StatusInternalServerError, codes.Internal, "erro ao montar a resposta")
 		return

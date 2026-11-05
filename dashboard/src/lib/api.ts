@@ -15,6 +15,7 @@ import type {
   FunnelStep,
   Issue,
   IssueComment,
+  LogPage,
   Overview,
   Release,
   ReleaseComparison,
@@ -51,6 +52,7 @@ export type {
   FunnelStepMatch,
   Issue,
   IssueComment,
+  LogPage,
   Release,
   ReleaseComparison,
   RetentionResult,
@@ -179,6 +181,8 @@ export const api = {
     request<SessionPage>('GET', '/v1/sessions', { params: q }),
   session: (id: string) => request<SessionDetail>('GET', `/v1/sessions/${encodeURIComponent(id)}`),
   trace: (id: string) => request<TraceView>('GET', `/v1/traces/${encodeURIComponent(id)}`),
+  logs: (q: Record<string, string | undefined>) =>
+    request<LogPage>('GET', '/v1/logs', { params: q }),
   overview: (q: Record<string, string | undefined>) =>
     request<Overview>('GET', '/v1/stats/overview', { params: q }),
   filterOptions: () => request<FilterOptions>('GET', '/v1/meta/filters'),

@@ -31,12 +31,15 @@ type Options struct {
 	Secure   bool
 	// SpanRetentionDays é o TTL de otel_spans. 0 usa o default (30 dias).
 	SpanRetentionDays int
+	// LogRetentionDays é o TTL de otel_logs. 0 usa o default (30 dias).
+	LogRetentionDays int
 }
 
 // Repository implementa domain.EventWriter e domain.EventReader.
 type Repository struct {
 	conn              driver.Conn
 	spanRetentionDays int
+	logRetentionDays  int
 }
 
 // Connect abre a conexão nativa, aguardando o servidor subir (compose).
@@ -65,7 +68,7 @@ func Connect(ctx context.Context, opts Options) (*Repository, error) {
 	deadline := time.Now().Add(90 * time.Second)
 	for {
 		if err = conn.Ping(ctx); err == nil {
-			return &Repository{conn: tracedConn{conn}, spanRetentionDays: opts.SpanRetentionDays}, nil
+			return &Repository{conn: tracedConn{conn}, spanRetentionDays: opts.SpanRetentionDays, logRetentionDays: opts.LogRetentionDays}, nil
 		}
 		if time.Now().After(deadline) {
 			return nil, fmt.Errorf("clickhouse indisponível após 90s: %w", err)
@@ -96,6 +99,9 @@ func (r *Repository) EnsureSchema(ctx context.Context) error {
 	}
 	if err := r.conn.Exec(ctx, spanTTL(r.spanRetentionDays)); err != nil {
 		return fmt.Errorf("aplicando retenção de otel_spans: %w", err)
+	}
+	if err := r.conn.Exec(ctx, logTTL(r.logRetentionDays)); err != nil {
+		return fmt.Errorf("aplicando retenção de otel_logs: %w", err)
 	}
 	return nil
 }

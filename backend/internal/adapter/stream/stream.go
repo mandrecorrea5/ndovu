@@ -60,6 +60,8 @@ type Runtime struct {
 	// Spans é o transporte dos spans OTLP. Só o NATS implementa por ora;
 	// nos outros backends é nil e o receptor OTLP fica desligado.
 	Spans *SpanRuntime
+	// Logs é o transporte dos logs OTLP. Mesma restrição: só NATS.
+	Logs *LogRuntime
 }
 
 // SpanConsumer drena lotes de spans OTLP, com a mesma semântica do Consumer.
@@ -72,6 +74,18 @@ type SpanRuntime struct {
 	Publisher  domain.SpanStream
 	DeadLetter func(ctx context.Context, batch domain.SpanBatch, reason string) error
 	Consumer   SpanConsumer
+}
+
+// LogConsumer drena lotes de logs OTLP.
+type LogConsumer interface {
+	Run(ctx context.Context, handle func(ctx context.Context, batches []domain.LogBatch) error) error
+}
+
+// LogRuntime agrupa as pontas do transporte de logs.
+type LogRuntime struct {
+	Publisher  domain.LogStream
+	DeadLetter func(ctx context.Context, batch domain.LogBatch, reason string) error
+	Consumer   LogConsumer
 }
 
 // Options parametriza a fábrica.
@@ -135,6 +149,11 @@ func newNATS(opts Options, logger *slog.Logger) (*Runtime, error) {
 		nc.Close()
 		return nil, err
 	}
+	logConsumer, err := natsstream.NewLogConsumer(ctx, js, opts.WriterBatch, opts.WriterMaxWait, logger)
+	if err != nil {
+		nc.Close()
+		return nil, err
+	}
 	return &Runtime{
 		Publisher: pub,
 		DeadLetter: func(ctx context.Context, batch domain.IngestBatch, reason string) error {
@@ -146,6 +165,11 @@ func newNATS(opts Options, logger *slog.Logger) (*Runtime, error) {
 			Publisher:  pub,
 			DeadLetter: pub.DeadLetterSpans,
 			Consumer:   spanConsumer,
+		},
+		Logs: &LogRuntime{
+			Publisher:  pub,
+			DeadLetter: pub.DeadLetterLogs,
+			Consumer:   logConsumer,
 		},
 	}, nil
 }

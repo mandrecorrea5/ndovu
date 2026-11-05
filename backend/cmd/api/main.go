@@ -184,7 +184,7 @@ func run() error {
 	bootSpan.End()
 
 	ingestSvc := usecase.NewIngestService(streamRT.Publisher, logger)
-	querySvc := usecase.NewQueryService(repo).WithFeedbackFallback(ctl).WithSpans(repo)
+	querySvc := usecase.NewQueryService(repo).WithFeedbackFallback(ctl).WithSpans(repo).WithLogs(repo)
 	handlers := httpapi.NewHandlers(ingestSvc, querySvc, authSvc, keySvc, appSvc, companySvc, issueSvc, alertSvc, releaseSvc, sourceMapSvc, savedViewSvc, funnelSvc, retentionSvc, digestSvc, auditSvc, gdprSvc, permissionSvc, samplingSvc, snapshotSvc, anomalySvc, feedbackSvc, logger, cfg)
 	router := httpapi.NewRouter(handlers, cfg, authSvc, keySvc, ctl, ctl, metrics, logger, api.SpecFS)
 
@@ -239,9 +239,13 @@ func newOTLPServer(cfg config.Config, streamRT *stream.Runtime, keys *usecase.AP
 		return nil
 	}
 	ingest := usecase.NewSpanIngestService(streamRT.Spans.Publisher, logger)
+	var logIngest *usecase.LogIngestService
+	if streamRT.Logs != nil {
+		logIngest = usecase.NewLogIngestService(streamRT.Logs.Publisher, logger)
+	}
 	return &http.Server{
 		Addr: fmt.Sprintf(":%d", cfg.OTLPPort),
-		Handler: httpapi.NewOTLPRouter(ingest, keys, metrics, logger, httpapi.OTLPOptions{
+		Handler: httpapi.NewOTLPRouter(ingest, logIngest, keys, metrics, logger, httpapi.OTLPOptions{
 			MaxBodyBytes:   cfg.OTLPMaxBodyBytes,
 			MaxDecodedSize: cfg.OTLPMaxDecodedSize,
 			MaxSpanAge:     time.Duration(cfg.SpanRetentionDays) * 24 * time.Hour,

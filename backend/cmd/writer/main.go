@@ -60,6 +60,7 @@ func run() error {
 		Password: cfg.ClickHousePassword,
 
 		SpanRetentionDays: cfg.SpanRetentionDays,
+		LogRetentionDays:  cfg.LogRetentionDays,
 	})
 	if err != nil {
 		return fmt.Errorf("conectando ao ClickHouse: %w", err)
@@ -169,10 +170,21 @@ func run() error {
 		}()
 	}
 
+	// Logs OTLP: consumidor próprio; mesma restrição de backend do NATS.
+	if streamRT.Logs != nil {
+		logSvc := usecase.NewLogWriteService(repo, streamRT.Logs.DeadLetter, logger)
+		go func() {
+			if err := streamRT.Logs.Consumer.Run(ctx, logSvc.HandleBatches); err != nil {
+				logger.Error("consumidor de logs encerrou com erro", "err", err)
+			}
+		}()
+	}
+
 	logger.Info("ndovu-writer consumindo",
 		"backend", cfg.StreamBackend,
 		"batch", cfg.WriterBatch,
 		"spans", streamRT.Spans != nil,
+		"logs", streamRT.Logs != nil,
 	)
 	return streamRT.Consumer.Run(ctx, writeSvc.HandleBatches)
 }

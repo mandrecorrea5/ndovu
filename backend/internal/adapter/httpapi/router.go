@@ -87,6 +87,7 @@ func NewRouter(h *Handlers, cfg config.Config, verifier domain.TokenVerifier, ke
 			r.Get("/sessions", h.GetSessions)
 			r.Get("/sessions/{sessionId}", h.GetSession)
 			r.Get("/traces/{traceId}", h.GetTrace)
+			r.Get("/logs", h.GetLogs)
 			r.Get("/stats/overview", h.GetOverview)
 			r.Get("/stats/vitals", h.GetWebVitals)
 			r.Get("/stats/compare", h.GetReleaseCompare)

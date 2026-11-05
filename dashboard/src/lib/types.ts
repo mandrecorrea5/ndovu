@@ -456,3 +456,25 @@ export interface EventQuery {
   limit?: string;
   cursor?: string;
 }
+
+/** Log OTLP recebido pela API (Fase 2). */
+export interface LogRecord {
+  app: string;
+  serviceName: string;
+  scopeName?: string;
+  severityText: string;
+  severityNumber?: string;
+  body: string;
+  traceId?: string;
+  spanId?: string;
+  userId?: string;
+  time: string;
+  observedTime?: string;
+  attributes?: Record<string, string>;
+  resourceAttributes?: Record<string, string>;
+  receivedAt: string;
+}
+
+export interface LogPage {
+  logs: LogRecord[];
+}

@@ -20,6 +20,7 @@ type QueryService struct {
 	reader    domain.EventReader
 	feedbacks domain.FeedbackStore // opcional: usado como fallback em Session()
 	spans     domain.SpanReader    // opcional: spans OTLP no waterfall do trace
+	logs      domain.LogReader     // opcional: busca de logs OTLP
 }
 
 // NewQueryService cria o serviço de consulta.
@@ -40,6 +41,22 @@ func (s *QueryService) WithFeedbackFallback(store domain.FeedbackStore) *QuerySe
 func (s *QueryService) WithSpans(reader domain.SpanReader) *QueryService {
 	s.spans = reader
 	return s
+}
+
+// WithLogs liga a busca de logs OTLP.
+func (s *QueryService) WithLogs(reader domain.LogReader) *QueryService {
+	s.logs = reader
+	return s
+}
+
+// Logs lista logs OTLP aplicando os filtros do dashboard. Sem reader (backend
+// de stream sem logs), devolve lista vazia em vez de erro.
+func (s *QueryService) Logs(ctx context.Context, f domain.LogFilter) ([]domain.LogRecord, error) {
+	f.Limit = clampLimit(f.Limit)
+	if s.logs == nil {
+		return []domain.LogRecord{}, nil
+	}
+	return s.logs.FindLogs(ctx, f)
 }
 
 // Events lista eventos aplicando o filtro combinado do usuário.

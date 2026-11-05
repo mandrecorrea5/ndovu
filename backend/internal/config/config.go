@@ -105,6 +105,7 @@ type Config struct {
 	OTLPMaxBodyBytes   int64          // corpo como chega (comprimido)
 	OTLPMaxDecodedSize int64          // corpo depois do gunzip (anti gzip bomb)
 	SpanRetentionDays  int            // TTL de otel_spans
+	LogRetentionDays   int            // TTL de otel_logs
 	SpanDailyQuota     int            // spans/dia por app antes do sampling forçado; 0 desliga
 	SpanForcedRate     float64        // taxa do sampling forçado
 	SpanQuotaLocation  *time.Location // fuso da virada do dia da cota
@@ -212,6 +213,7 @@ func LoadFor(component string) (Config, error) {
 		OTLPMaxBodyBytes:   int64(envInt("NDOVU_OTLP_MAX_BODY_BYTES", 4<<20)),
 		OTLPMaxDecodedSize: int64(envInt("NDOVU_OTLP_MAX_DECODED_BYTES", 32<<20)),
 		SpanRetentionDays:  envInt("NDOVU_SPAN_RETENTION_DAYS", 30),
+		LogRetentionDays:   envInt("NDOVU_LOG_RETENTION_DAYS", 30),
 		SpanDailyQuota:     envInt("NDOVU_SPAN_DAILY_QUOTA", 500_000),
 		SpanForcedRate:     envFloat("NDOVU_SPAN_FORCED_RATE", 0.1),
 		SpanQuotaAlertTo:   splitCSV(envStr("NDOVU_SPAN_QUOTA_ALERT_TO", "")),

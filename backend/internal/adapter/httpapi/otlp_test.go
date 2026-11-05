@@ -28,6 +28,19 @@ type captureSpanStream struct {
 	err     error
 }
 
+type captureLogStream struct {
+	batches []domain.LogBatch
+	err     error
+}
+
+func (c *captureLogStream) PublishLogs(_ context.Context, b domain.LogBatch) error {
+	if c.err != nil {
+		return c.err
+	}
+	c.batches = append(c.batches, b)
+	return nil
+}
+
 func (c *captureSpanStream) PublishSpans(_ context.Context, b domain.SpanBatch) error {
 	if c.err != nil {
 		return c.err
@@ -37,10 +50,11 @@ func (c *captureSpanStream) PublishSpans(_ context.Context, b domain.SpanBatch) 
 }
 
 type otlpFixture struct {
-	router http.Handler
-	stream *captureSpanStream
-	server string // chave de app com allow_otlp
-	brows  string // chave de app de browser
+	router    http.Handler
+	stream    *captureSpanStream
+	logStream *captureLogStream
+	server    string // chave de app com allow_otlp
+	brows     string // chave de app de browser
 }
 
 func newOTLPFixture(t *testing.T, opts OTLPOptions) *otlpFixture {
@@ -61,8 +75,13 @@ func newOTLPFixture(t *testing.T, opts OTLPOptions) *otlpFixture {
 	store.keys[server.ID] = k
 
 	stream := &captureSpanStream{}
-	router := NewOTLPRouter(usecase.NewSpanIngestService(stream, logger), keys, nil, logger, opts)
-	return &otlpFixture{router: router, stream: stream, server: server.Key, brows: browser.Key}
+	logStream := &captureLogStream{}
+	router := NewOTLPRouter(
+		usecase.NewSpanIngestService(stream, logger),
+		usecase.NewLogIngestService(logStream, logger),
+		keys, nil, logger, opts,
+	)
+	return &otlpFixture{router: router, stream: stream, logStream: logStream, server: server.Key, brows: browser.Key}
 }
 
 func exportBody(t *testing.T, json bool, start time.Time) []byte {

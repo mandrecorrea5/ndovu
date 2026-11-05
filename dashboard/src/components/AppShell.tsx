@@ -25,6 +25,9 @@ const Icon = {
   traces: (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 6h16"/><path d="M4 12h10"/><path d="M4 18h16"/><circle cx="18" cy="12" r="2"/></svg>
   ),
+  logs: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16"/><path d="M4 8h16"/><path d="M4 12h10"/><path d="M4 16h16"/><path d="M4 20h8"/></svg>
+  ),
   sessions: (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
   ),
@@ -96,6 +99,7 @@ const NAV: NavItem[] = [
   { href: '/funnels', label: 'Funis', icon: Icon.funnels },
   { href: '/retention', label: 'Retenção', icon: Icon.retention },
   { href: '/traces', label: 'Explorador', icon: Icon.traces },
+  { href: '/logs', label: 'Logs', icon: Icon.logs },
   { href: '/sessions', label: 'Sessões', icon: Icon.sessions },
 ];
 

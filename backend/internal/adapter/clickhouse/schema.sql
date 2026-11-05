@@ -124,3 +124,31 @@ ENGINE = ReplacingMergeTree
 PARTITION BY toDate(start_time)
 ORDER BY (app, service_name, start_time, trace_id, span_id)
 SETTINGS index_granularity = 8192, storage_policy = 'tiered'
+
+-- Logs OTLP (Fase 2). Separado de trace_events de propósito: log não é
+-- evento do contrato v1 e pode chegar em volume muito maior.
+CREATE TABLE IF NOT EXISTS otel_logs
+(
+    app             LowCardinality(String),
+    service_name    LowCardinality(String),
+    scope_name      LowCardinality(String) DEFAULT '',
+    severity_text   LowCardinality(String) DEFAULT '',
+    severity_number LowCardinality(String) DEFAULT '',
+    body            String CODEC(ZSTD(3)),
+    trace_id        String DEFAULT '',
+    span_id         String DEFAULT '',
+    user_id         String DEFAULT '',
+    log_time        DateTime64(9, 'UTC'),
+    observed_time   DateTime64(9, 'UTC'),
+    attributes      Map(LowCardinality(String), String) CODEC(ZSTD(3)),
+    resource_attrs  Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+    received_at     DateTime64(3, 'UTC'),
+
+    INDEX idx_trace_id trace_id TYPE bloom_filter(0.01) GRANULARITY 4,
+    INDEX idx_user     user_id  TYPE bloom_filter(0.01) GRANULARITY 4,
+    INDEX idx_body     body     TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 4
+)
+ENGINE = ReplacingMergeTree
+PARTITION BY toDate(log_time)
+ORDER BY (app, service_name, log_time, trace_id, span_id, cityHash64(body))
+SETTINGS index_granularity = 8192, storage_policy = 'tiered';

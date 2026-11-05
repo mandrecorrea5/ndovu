@@ -31,3 +31,9 @@ Thumbs.db
 # Temporários
 tmp/
 *.tmp
+
+# A rota /logs do dashboard é código, não artefato de log.
+!src/app/logs/
+!src/app/logs/**
+!src/app/api/logs/
+!src/app/api/logs/**

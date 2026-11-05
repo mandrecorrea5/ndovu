@@ -285,6 +285,36 @@ func (h *Handlers) GetTrace(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, view)
 }
 
+// GetLogs busca logs OTLP no armazém, restritos aos apps do scope.
+func (h *Handlers) GetLogs(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	from, err := parseTime(q.Get("from"))
+	if err != nil {
+		h.writeError(w, r, domain.NewValidationError("'from' deve ser RFC3339"))
+		return
+	}
+	to, err := parseTime(q.Get("to"))
+	if err != nil {
+		h.writeError(w, r, domain.NewValidationError("'to' deve ser RFC3339"))
+		return
+	}
+	logs, err := h.query.Logs(r.Context(), domain.LogFilter{
+		App:      q.Get("app"),
+		Service:  q.Get("service"),
+		Severity: q.Get("severity"),
+		Search:   q.Get("q"),
+		From:     from,
+		To:       to,
+		Scope:    scopeFrom(r),
+		Limit:    parseIntDefault(q.Get("limit"), 200),
+	})
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"logs": logs})
+}
+
 // GetOverview agrega métricas da janela de tempo.
 func (h *Handlers) GetOverview(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
