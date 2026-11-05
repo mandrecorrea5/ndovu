@@ -1,6 +1,6 @@
 # Avaliação — receber OTLP no Ndovu
 
-Status: **aprovada · Fases 0 e 1 concluídas** (2026-10-22) · decisões em §6 · resultado da Fase 1 em §8
+Status: **aprovada · Fases 0, 1 e 2 concluídas** (2026-11-05) · decisões em §6 · resultado da Fase 1 em §8
 
 ## 1. Por que
 
@@ -158,7 +158,7 @@ Este documento propõe traces → logs e para aí até medir uso e custo.
 | 0 ✅ | Dogfooding: Ndovu se instrumenta com OTel (§18.4 da ARQUITETURA) exportando para um Jaeger local — gera o tráfego de teste da Fase 1 | P |
 | 1 ✅ | `POST /v1/traces` (HTTP, proto+JSON, gzip) · `otel_spans` · sampling por trace · flag `allow_otlp` (no app, ver §8) · waterfall unificado no dashboard | G |
 | 1.5 | Spans com erro viram issues · RED por rota via materialized view | M |
-| 2 | `POST /v1/logs` · `otel_logs` · busca e salto log→trace | M/G |
+| 2 ✅ | `POST /v1/logs` · `otel_logs` · busca e salto log→trace | M/G |
 | — | Métricas OTLP | adiado |
 
 ## 6. Decisões (2026-10-21)
