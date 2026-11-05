@@ -42,6 +42,9 @@ tela), `false`/`'off'` (desliga). O envio é fire-and-forget no próximo
 frame, para o router já ter pintado a tela nova; falha de upload não
 afeta o evento.
 
+O `url` gravado no snapshot vai só com origem + path; a query string fica
+de fora (pode carregar token de reset, busca ou outro dado sensível).
+
 **Custo:** é um `POST /v1/snapshots` por navegação (HTML cru, tipicamente
 30-500 KB; 5-50 KB já gzipado no bucket). Ative por app, com
 consentimento/LGPD e `data-ndovu-mask` nos pontos com PII; para alto

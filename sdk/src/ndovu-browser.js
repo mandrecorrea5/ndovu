@@ -738,7 +738,9 @@ async function sendSnapshot(endpoint, apiKey, app, sessionId, eventId) {
       sessionId,
       app,
       html,
-      url: location.href,
+      // Query string pode carregar token/PII (reset de senha, busca); o
+      // replay não precisa dela. Mantém origem + path.
+      url: `${location.origin ?? ''}${location.pathname ?? ''}`,
       viewportW: window.innerWidth,
       viewportH: window.innerHeight,
       takenAt: new Date().toISOString(),
