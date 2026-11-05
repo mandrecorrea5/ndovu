@@ -1,11 +1,11 @@
 import { type NextRequest } from 'next/server';
 import { upstream, requireSession, UpstreamError } from '@/lib/bff';
-import { errorResponse, proxyResponse } from '@/lib/proxy';
+import { errorResponse, proxyResponse, handleRoute } from '@/lib/proxy';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(
+async function GETHandler(
   req: NextRequest, ctx: { params: Promise<Record<string, never>> },
   
 ) {
@@ -20,7 +20,7 @@ export async function GET(
     req.nextUrl.searchParams,
   );
 }
-export async function POST(
+async function POSTHandler(
   req: NextRequest, ctx: { params: Promise<Record<string, never>> },
   
 ) {
@@ -50,3 +50,6 @@ async function upstreamRequest(
     return errorResponse(err);
   }
 }
+
+export const GET = handleRoute(GETHandler);
+export const POST = handleRoute(POSTHandler);

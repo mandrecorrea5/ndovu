@@ -1,12 +1,12 @@
 import { type NextRequest } from 'next/server';
 import { upstream, requireSession } from '@/lib/bff';
-import { errorResponse, proxyResponse } from '@/lib/proxy';
+import { errorResponse, proxyResponse, handleRoute } from '@/lib/proxy';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /** Trace unificado (eventos do SDK + spans OTLP), já restrito ao scope do usuário pela API. */
-export async function GET(req: NextRequest, ctx: { params: Promise<{ traceId: string }> }) {
+async function GETHandler(req: NextRequest, ctx: { params: Promise<{ traceId: string }> }) {
   const session = await requireSession();
   const { traceId } = await ctx.params;
   try {
@@ -19,3 +19,5 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ traceId: st
     return errorResponse(err);
   }
 }
+
+export const GET = handleRoute(GETHandler);

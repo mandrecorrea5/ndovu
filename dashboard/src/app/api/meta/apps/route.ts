@@ -1,11 +1,11 @@
 import { type NextRequest } from 'next/server';
 import { upstream, requireSession } from '@/lib/bff';
-import { errorResponse, proxyResponse } from '@/lib/proxy';
+import { errorResponse, proxyResponse, handleRoute } from '@/lib/proxy';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(req: NextRequest) {
+async function GETHandler(req: NextRequest) {
   const session = await requireSession();
   try {
     const data = await upstream('GET', '/v1/meta/apps', {
@@ -17,3 +17,5 @@ export async function GET(req: NextRequest) {
     return errorResponse(err);
   }
 }
+
+export const GET = handleRoute(GETHandler);

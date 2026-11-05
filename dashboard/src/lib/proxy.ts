@@ -31,3 +31,23 @@ export function errorResponse(err: unknown): NextResponse {
     { status: 500, headers: { 'Cache-Control': 'no-store' } },
   );
 }
+
+/**
+ * handleRoute envolve um route handler do App Router e transforma qualquer
+ * exceção não tratada em resposta JSON com o status correto.
+ *
+ * Motivo: requireSession() lança UpstreamError(401) quando a sessão está
+ * ausente/expirada. Sem o wrapper, o Next trata a exceção como erro interno e
+ * devolve 500 — o browser não consegue distinguir "faça login" de "quebrou".
+ */
+export function handleRoute<A extends unknown[]>(
+  handler: (...args: A) => Response | Promise<Response>,
+): (...args: A) => Promise<Response> {
+  return async (...args: A) => {
+    try {
+      return await handler(...args);
+    } catch (err) {
+      return errorResponse(err);
+    }
+  };
+}

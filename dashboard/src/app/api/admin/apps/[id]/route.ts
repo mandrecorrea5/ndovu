@@ -1,11 +1,11 @@
 import { type NextRequest } from 'next/server';
 import { upstream, requireSession, UpstreamError } from '@/lib/bff';
-import { errorResponse, proxyResponse } from '@/lib/proxy';
+import { errorResponse, proxyResponse, handleRoute } from '@/lib/proxy';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function PATCH(
+async function PATCHHandler(
   req: NextRequest, ctx: { params: Promise<{ id: string }> },
   
 ) {
@@ -20,7 +20,7 @@ export async function PATCH(
     req.nextUrl.searchParams,
   );
 }
-export async function DELETE(
+async function DELETEHandler(
   req: NextRequest, ctx: { params: Promise<{ id: string }> },
   
 ) {
@@ -50,3 +50,6 @@ async function upstreamRequest(
     return errorResponse(err);
   }
 }
+
+export const PATCH = handleRoute(PATCHHandler);
+export const DELETE = handleRoute(DELETEHandler);
