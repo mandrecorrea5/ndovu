@@ -123,7 +123,7 @@ CREATE TABLE IF NOT EXISTS otel_spans
 ENGINE = ReplacingMergeTree
 PARTITION BY toDate(start_time)
 ORDER BY (app, service_name, start_time, trace_id, span_id)
-SETTINGS index_granularity = 8192, storage_policy = 'tiered'
+SETTINGS index_granularity = 8192, storage_policy = 'tiered';
 
 -- Logs OTLP (Fase 2). Separado de trace_events de propósito: log não é
 -- evento do contrato v1 e pode chegar em volume muito maior.
