@@ -105,6 +105,12 @@ services:
   api:
     restart: unless-stopped
     ports: !reset []
+    labels:
+      logging: promtail
+      service: ndovu-api
+    networks:
+      - default
+      - observability
     environment:
       NDOVU_ENV: production
       NDOVU_POSTGRES_URL: "postgres://${POSTGRES_USER:?Set POSTGRES_USER}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:?Set POSTGRES_DB}?sslmode=disable"
@@ -139,6 +145,9 @@ services:
 
   writer:
     restart: unless-stopped
+    labels:
+      logging: promtail
+      service: ndovu-writer
     environment:
       NDOVU_ENV: production
       NDOVU_POSTGRES_URL: "postgres://${POSTGRES_USER:?Set POSTGRES_USER}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:?Set POSTGRES_DB}?sslmode=disable"
@@ -169,6 +178,9 @@ services:
 
   dashboard:
     restart: unless-stopped
+    labels:
+      logging: promtail
+      service: ndovu-dashboard
     ports: !reset []
     build:
       args:
@@ -279,3 +291,5 @@ volumes:
 
 networks:
   tunnel:
+  observability:
+    external: true
