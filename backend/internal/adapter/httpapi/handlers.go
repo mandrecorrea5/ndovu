@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/marcoscorrea/ndovu/backend/internal/adapter/clickhouse"
+	"github.com/marcoscorrea/ndovu/backend/internal/adapter/downloaderclient"
 	"github.com/marcoscorrea/ndovu/backend/internal/config"
 	"github.com/marcoscorrea/ndovu/backend/internal/domain"
 	"github.com/marcoscorrea/ndovu/backend/internal/usecase"
@@ -42,6 +43,7 @@ type Handlers struct {
 	snapshots   *usecase.SnapshotService
 	anomalies   *usecase.AnomalyService
 	feedback    *usecase.FeedbackService
+	downloader  *downloaderclient.Client
 	logger      *slog.Logger
 	cfg         config.Config
 }
@@ -69,6 +71,7 @@ func NewHandlers(
 	snapshots *usecase.SnapshotService,
 	anomalies *usecase.AnomalyService,
 	feedback *usecase.FeedbackService,
+	downloader *downloaderclient.Client,
 	logger *slog.Logger,
 	cfg config.Config,
 ) *Handlers {
@@ -79,7 +82,8 @@ func NewHandlers(
 		funnels: funnels, retention: retention, digest: digest, audit: audit,
 		gdpr: gdpr, permissions: permissions, sampling: sampling,
 		snapshots: snapshots, anomalies: anomalies, feedback: feedback,
-		logger: logger, cfg: cfg,
+		downloader: downloader,
+		logger:     logger, cfg: cfg,
 	}
 }
 

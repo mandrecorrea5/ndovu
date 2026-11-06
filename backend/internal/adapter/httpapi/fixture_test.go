@@ -113,7 +113,7 @@ func newFixture(t *testing.T) *testFixture {
 		ingestSvc, querySvc, authSvc, keySvc, appSvc, companySvc,
 		issueSvc, alertSvc, releaseSvc, sourceMapSvc, savedViewSvc,
 		funnelSvc, retentionSvc, nil /* digest */, auditSvc, gdprSvc,
-		permSvc, samplingSvc, snapshotSvc, anomalySvc, feedbackSvc, logger,
+		permSvc, samplingSvc, snapshotSvc, anomalySvc, feedbackSvc, nil /* downloader */, logger,
 		config.Config{},
 	)
 

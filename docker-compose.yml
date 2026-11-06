@@ -25,6 +25,9 @@ x-app-env: &app-env
   NDOVU_S3_SECRET_KEY: ${NDOVU_S3_SECRET_KEY:-ndovu-secret}
   NDOVU_S3_USE_SSL: ${NDOVU_S3_USE_SSL:-false}
   NDOVU_SNAPSHOT_BUCKET: ${NDOVU_SNAPSHOT_BUCKET:-ndovu-snapshots}
+  # Downloader interno de MP3 (yt-dlp/ffmpeg). Token compartilhado entre a API
+  # e o serviço downloader; vazio desliga a feature (503).
+  NDOVU_DOWNLOADER_TOKEN: ${NDOVU_DOWNLOADER_TOKEN:-dev-downloader-token-change-me}
 
   # Tracing OTel do próprio Ndovu (Fase 0 do OTLP, docs/AVALIACAO-OTLP.md).
   # Vazio = desligado. Para ligar com o Jaeger local:
@@ -164,6 +167,8 @@ services:
       NDOVU_ADMIN_EMAIL: ${NDOVU_ADMIN_EMAIL:-admin@ndovu.local}
       NDOVU_ADMIN_PASSWORD: ${NDOVU_ADMIN_PASSWORD:-admin12345}
       NDOVU_BOOTSTRAP_INGEST_KEY: ${NDOVU_BOOTSTRAP_INGEST_KEY:-dev-ingest-key}
+      NDOVU_DOWNLOADER_URL: http://downloader:8090
+      NDOVU_DOWNLOADER_MAX_VIDEOS: ${NDOVU_DOWNLOADER_MAX_VIDEOS:-10}
     ports:
       - "18081:8080"
       # Receptor OTLP (otlp.<domínio> em produção). Host 14318 para não
@@ -176,6 +181,30 @@ services:
         condition: service_healthy
       nats:
         condition: service_healthy
+
+  downloader:
+    build:
+      context: ./backend
+      target: downloader
+    environment:
+      NDOVU_DOWNLOADER_ADDR: ":8090"
+      NDOVU_DOWNLOADER_DATA_DIR: /data/downloads
+      NDOVU_DOWNLOADER_TOKEN: ${NDOVU_DOWNLOADER_TOKEN:-dev-downloader-token-change-me}
+      NDOVU_DOWNLOADER_MAX_VIDEOS: ${NDOVU_DOWNLOADER_MAX_VIDEOS:-10}
+      NDOVU_DOWNLOADER_CONCURRENCY: ${NDOVU_DOWNLOADER_CONCURRENCY:-1}
+      NDOVU_DOWNLOADER_VIDEO_TIMEOUT_SECONDS: ${NDOVU_DOWNLOADER_VIDEO_TIMEOUT_SECONDS:-600}
+      NDOVU_DOWNLOADER_JOB_TTL_HOURS: ${NDOVU_DOWNLOADER_JOB_TTL_HOURS:-24}
+      # Vazio = ffmpeg do PATH (na imagem já vem de /usr/bin).
+      NDOVU_FFMPEG_LOCATION: ${NDOVU_FFMPEG_LOCATION:-}
+      NDOVU_LOG_LEVEL: ${NDOVU_LOG_LEVEL:-info}
+    volumes:
+      - downloadsdata:/data/downloads
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   writer:
     build: ./backend
@@ -214,3 +243,4 @@ volumes:
   natsdata:
   pgdata:
   miniodata:
+  downloadsdata:

@@ -168,6 +168,10 @@ func NewRouter(h *Handlers, cfg config.Config, verifier domain.TokenVerifier, ke
 			r.Delete("/feedbacks/{id}", h.DeleteFeedback)
 			r.Get("/gdpr/user/{userId}/export", h.GetGDPRExport)
 			r.Delete("/gdpr/user/{userId}", h.DeleteGDPRUser)
+			// Downloads de MP3 (yt-dlp) — ferramenta interna de admin.
+			r.Post("/downloads", h.PostDownloadJob)
+			r.Get("/downloads/{id}", h.GetDownloadJob)
+			r.Get("/downloads/{id}/archive", h.GetDownloadArchive)
 		})
 	})
 

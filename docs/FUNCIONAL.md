@@ -40,6 +40,7 @@
 24. [Funcionalidades do SDK visíveis ao usuário final](#24-funcionalidades-do-sdk-visíveis-ao-usuário-final)
 25. [Fluxos ponta-a-ponta](#25-fluxos-ponta-a-ponta)
 26. [Notificações e digests](#26-notificações-e-digests)
+27. [Ferramenta interna: Downloads MP3](#27-ferramenta-interna-downloads-mp3)
 
 ---
 
@@ -155,6 +156,7 @@ O dashboard é dividido em duas seções principais no menu lateral:
 - **Sampling**
 - **Anomalias**
 - **Feedback**
+- **Downloads MP3** (ferramenta interna)
 
 ### 3.3. Elementos comuns
 
@@ -961,6 +963,31 @@ automaticamente qual usar.
 
 **Pode ser forçado imediatamente** via botão "Enviar agora" na página
 de admin (útil para testar configuração de email).
+
+---
+
+## 27. Ferramenta interna: Downloads MP3
+
+**Rota:** `/admin/downloads`
+
+Utilitário operacional, sem relação com observabilidade: converte uma
+lista de vídeos do YouTube em `.mp3` e entrega um `.zip`.
+
+- Admin cola até **10 links** por job (watch, youtu.be, shorts, live).
+- O job roda em segundo plano e a tela mostra o progresso
+  (`Na fila` → `Processando` → `Pronto`).
+- Se um vídeo falhar, os demais continuam e o zip traz um
+  `falhas.txt` com URL e motivo.
+- O zip fica disponível por 24h; depois é apagado do disco.
+- Cada criação entra no audit log (`download.create`).
+
+**Uso permitido:** apenas conteúdo próprio ou com licença que autorize
+o download — baixar vídeos de terceiros viola os Termos de Serviço do
+YouTube. Por isso a ferramenta é restrita a admin.
+
+**Dependência:** serviço `downloader` (yt-dlp + ffmpeg). Sem ele, a
+tela responde "downloader desabilitado" e o resto do produto segue
+normal.
 
 ---
 

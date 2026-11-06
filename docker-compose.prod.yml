@@ -124,6 +124,7 @@ services:
       NDOVU_SESSION_ENC_KEY: "${NDOVU_SESSION_ENC_KEY:?Set NDOVU_SESSION_ENC_KEY}"
       NDOVU_BOOTSTRAP_INGEST_KEY: ""
       NDOVU_CORS_ORIGINS: "${NDOVU_CORS_ORIGINS:?Set NDOVU_CORS_ORIGINS}"
+      NDOVU_DOWNLOADER_TOKEN: "${NDOVU_DOWNLOADER_TOKEN:?Set NDOVU_DOWNLOADER_TOKEN}"
       NDOVU_S3_ENDPOINT: "${NDOVU_S3_ENDPOINT:?Set NDOVU_S3_ENDPOINT}"
       NDOVU_S3_ACCESS_KEY: "${NDOVU_S3_ACCESS_KEY:?Set NDOVU_S3_ACCESS_KEY}"
       NDOVU_S3_SECRET_KEY: "${NDOVU_S3_SECRET_KEY:?Set NDOVU_S3_SECRET_KEY}"
@@ -142,6 +143,22 @@ services:
         limits:
           memory: 1G
           cpus: "1.5"
+
+  downloader:
+    restart: unless-stopped
+    labels:
+      logging: promtail
+      service: ndovu-downloader
+    environment:
+      NDOVU_ENV: production
+      NDOVU_DOWNLOADER_TOKEN: "${NDOVU_DOWNLOADER_TOKEN:?Set NDOVU_DOWNLOADER_TOKEN}"
+      NDOVU_DOWNLOADER_MAX_VIDEOS: "10"
+    # yt-dlp + ffmpeg: CPU-bound e com pico de disco durante a conversão.
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "1"
 
   writer:
     restart: unless-stopped

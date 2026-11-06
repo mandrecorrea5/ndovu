@@ -21,6 +21,7 @@ import (
 	"github.com/marcoscorrea/ndovu/backend/internal/adapter/blobstore"
 	"github.com/marcoscorrea/ndovu/backend/internal/adapter/clickhouse"
 	"github.com/marcoscorrea/ndovu/backend/internal/adapter/ctlpostgres"
+	"github.com/marcoscorrea/ndovu/backend/internal/adapter/downloaderclient"
 	"github.com/marcoscorrea/ndovu/backend/internal/adapter/httpapi"
 	"github.com/marcoscorrea/ndovu/backend/internal/adapter/stream"
 	"github.com/marcoscorrea/ndovu/backend/internal/config"
@@ -185,7 +186,13 @@ func run() error {
 
 	ingestSvc := usecase.NewIngestService(streamRT.Publisher, logger)
 	querySvc := usecase.NewQueryService(repo).WithFeedbackFallback(ctl).WithSpans(repo).WithLogs(repo)
-	handlers := httpapi.NewHandlers(ingestSvc, querySvc, authSvc, keySvc, appSvc, companySvc, issueSvc, alertSvc, releaseSvc, sourceMapSvc, savedViewSvc, funnelSvc, retentionSvc, digestSvc, auditSvc, gdprSvc, permissionSvc, samplingSvc, snapshotSvc, anomalySvc, feedbackSvc, logger, cfg)
+	var dlClient *downloaderclient.Client
+	if cfg.DownloaderURL != "" {
+		dlClient = downloaderclient.New(cfg.DownloaderURL, cfg.DownloaderToken)
+		logger.Info("downloader ativo", "url", cfg.DownloaderURL)
+	}
+
+	handlers := httpapi.NewHandlers(ingestSvc, querySvc, authSvc, keySvc, appSvc, companySvc, issueSvc, alertSvc, releaseSvc, sourceMapSvc, savedViewSvc, funnelSvc, retentionSvc, digestSvc, auditSvc, gdprSvc, permissionSvc, samplingSvc, snapshotSvc, anomalySvc, feedbackSvc, dlClient, logger, cfg)
 	router := httpapi.NewRouter(handlers, cfg, authSvc, keySvc, ctl, ctl, metrics, logger, api.SpecFS)
 
 	srv := &http.Server{

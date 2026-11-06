@@ -507,6 +507,66 @@ paths:
                   types: { type: array, items: { type: string } }
                   features: { type: array, items: { type: string } }
                   names: { type: array, items: { type: string } }
+  /v1/admin/downloads:
+    post:
+      tags: [auth]
+      summary: Cria job de conversão de vídeos do YouTube em MP3 (admin)
+      description: Ferramenta interna. O job roda no serviço downloader (yt-dlp + ffmpeg) e o zip fica disponível por 24h.
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [urls]
+              properties:
+                urls:
+                  type: array
+                  minItems: 1
+                  maxItems: 10
+                  items: { type: string, format: uri }
+      responses:
+        "202":
+          description: Job aceito
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DownloadJob" }
+        "400":
+          description: Link inválido, fora do YouTube ou acima do limite de vídeos
+        "503":
+          description: Downloader desabilitado (NDOVU_DOWNLOADER_URL vazio)
+  /v1/admin/downloads/{id}:
+    get:
+      tags: [auth]
+      summary: Progresso de um job de download (admin)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Estado do job
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DownloadJob" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /v1/admin/downloads/{id}/archive:
+    get:
+      tags: [auth]
+      summary: Baixa o .zip com os MP3 do job (admin)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Arquivo zip
+          content:
+            application/zip:
+              schema: { type: string, format: binary }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Zip ainda não está pronto
+
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -715,3 +775,21 @@ components:
               code: { type: string }
               message: { type: string }
               count: { type: integer }
+    DownloadJob:
+      type: object
+      properties:
+        id: { type: string }
+        status: { type: string, enum: [queued, running, done, error] }
+        total: { type: integer }
+        done: { type: integer }
+        failed:
+          type: array
+          items:
+            type: object
+            properties:
+              url: { type: string }
+              error: { type: string }
+        error: { type: string }
+        archiveBytes: { type: integer, format: int64 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }

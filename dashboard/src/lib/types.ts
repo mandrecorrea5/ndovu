@@ -488,3 +488,21 @@ export interface LogRecord {
 export interface LogPage {
   logs: LogRecord[];
 }
+
+/** Job de extração de MP3 (ferramenta admin, yt-dlp). */
+export interface DownloadJob {
+  id: string;
+  status: 'queued' | 'running' | 'done' | 'error';
+  total: number;
+  done: number;
+  failed?: DownloadFailure[];
+  error?: string;
+  archiveBytes?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DownloadFailure {
+  url: string;
+  error: string;
+}

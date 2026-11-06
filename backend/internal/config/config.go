@@ -115,6 +115,12 @@ type Config struct {
 	// (AES-GCM) o JWT no cookie httpOnly de sessão. A API não consome — só
 	// exige presença/força em produção para fail-fast no boot.
 	SessionEncKey string
+
+	// Downloader interno (yt-dlp + ffmpeg). Vazio = desligado (503 nos
+	// endpoints /v1/admin/downloads).
+	DownloaderURL       string
+	DownloaderToken     string
+	DownloaderMaxVideos int
 }
 
 // Load lê o ambiente para a API e aplica defaults de desenvolvimento. Em
@@ -208,6 +214,10 @@ func LoadFor(component string) (Config, error) {
 		DigestTickEvery:  time.Duration(envInt("NDOVU_DIGEST_TICK_SECONDS", 300)) * time.Second,
 
 		SessionEncKey: envStr("NDOVU_SESSION_ENC_KEY", ""),
+
+		DownloaderURL:       envStr("NDOVU_DOWNLOADER_URL", ""),
+		DownloaderToken:     envStr("NDOVU_DOWNLOADER_TOKEN", ""),
+		DownloaderMaxVideos: envInt("NDOVU_DOWNLOADER_MAX_VIDEOS", 10),
 
 		OTLPPort:           envInt("NDOVU_OTLP_PORT", 4318),
 		OTLPMaxBodyBytes:   int64(envInt("NDOVU_OTLP_MAX_BODY_BYTES", 4<<20)),

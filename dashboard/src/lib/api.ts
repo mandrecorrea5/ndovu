@@ -7,6 +7,7 @@ import type {
   AuditEntry,
   Company,
   CreatedApp,
+  DownloadJob,
   EventPage,
   EventQuery,
   FilterOptions,
@@ -42,6 +43,7 @@ export type {
   AuditEntry,
   Company,
   CreatedApp,
+  DownloadJob,
   SamplingRule,
   SnapshotMeta,
   UserAppPermission,
@@ -225,6 +227,14 @@ export const api = {
     request<CreatedApiKey>('POST', '/v1/admin/api-keys', { body: input }),
   revokeKey: (id: string) =>
     request<{ revoked: boolean }>('DELETE', `/v1/admin/api-keys/${encodeURIComponent(id)}`),
+
+  // downloads de MP3 (ferramenta admin — yt-dlp no serviço downloader)
+  createDownload: (urls: string[]) =>
+    request<DownloadJob>('POST', '/v1/admin/downloads', { body: { urls } }),
+  getDownload: (id: string) =>
+    request<DownloadJob>('GET', `/v1/admin/downloads/${encodeURIComponent(id)}`),
+  downloadArchiveUrl: (id: string) =>
+    `/api/admin/downloads/${encodeURIComponent(id)}/archive`,
 
   // issues (erros agrupados por fingerprint)
   issues: (q: {

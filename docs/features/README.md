@@ -46,6 +46,7 @@ demonstrar e explicar** cada parte da plataforma. Cada guia responde:
 | [Feedback do usuário](admin-feedbacks.md) | `/admin/feedbacks` | admin |
 | [Audit Log](admin-audit-log.md) | `/admin/audit-log` | admin |
 | [LGPD / GDPR](admin-gdpr.md) | `/admin/gdpr` | admin |
+| [Downloads MP3](admin-downloads.md) | `/admin/downloads` | admin |
 
 ## Plataforma (sem tela dedicada)
 
