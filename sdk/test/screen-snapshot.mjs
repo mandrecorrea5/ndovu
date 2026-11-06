@@ -17,7 +17,7 @@ globalThis.innerWidth = 1024;
 globalThis.innerHeight = 768;
 globalThis.sessionStorage = { getItem: () => null, setItem: () => {} };
 globalThis.addEventListener = () => {};
-globalThis.location = { pathname: '/t', href: 'http://x/t', origin: 'http://x' };
+globalThis.location = { pathname: '/t', href: 'http://x/t?token=segredo', origin: 'http://x' };
 globalThis.requestAnimationFrame = (cb) => {
   cb();
   return 1;
@@ -80,6 +80,11 @@ check(
 );
 check('screen: snapshot carrega o HTML do DOM', /<h1>tela<\/h1>/.test(snapshots[0]?.html ?? ''), '');
 check('screen: snapshot carrega viewport', snapshots[0]?.viewportW === 1024, '');
+check(
+  'screen: snapshot não vaza query string',
+  snapshots[0]?.url === 'http://x/t',
+  `url=${snapshots[0]?.url}`,
+);
 
 sdk.error('boom', { message: 'falhou' });
 await tick();
