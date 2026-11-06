@@ -98,6 +98,7 @@ jobs:
 
       # api e writer saem do MESMO Dockerfile (o writer só troca o entrypoint),
       # então é uma imagem só — publicar `ndovu-writer` duplicaria o artefato.
+      # O downloader é um target separado do mesmo Dockerfile (python+yt-dlp).
       - name: ndovu-api
         uses: docker/build-push-action@v6
         with:
@@ -109,6 +110,19 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.OWNER }}/ndovu-api:${{ steps.meta.outputs.tag }}
             ${{ env.REGISTRY }}/${{ env.OWNER }}/ndovu-api:sha-${{ github.sha }}
+
+      - name: ndovu-downloader
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          target: downloader
+          platforms: linux/amd64
+          push: true
+          cache-from: type=gha,scope=downloader
+          cache-to: type=gha,mode=max,scope=downloader
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/ndovu-downloader:${{ steps.meta.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/ndovu-downloader:sha-${{ github.sha }}
 
       - name: ndovu-dashboard
         uses: docker/build-push-action@v6
@@ -134,14 +148,21 @@ jobs:
     steps:
       - name: pull + up
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          # Pacote novo no GHCR nasce privado; o pull na VPS precisa de login.
+          # Token efêmero do job (mesmo usado no push), só durante o deploy.
+          envs: GHCR_TOKEN,GHCR_USER
           script_stop: true
           script: |
             set -eu
             cd /srv/apps/ndovu
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
             # Variável exportada vence o .env do compose: é o botão de rollback.
             export NDOVU_TAG="${{ needs.images.outputs.tag }}"
             docker compose \
@@ -158,6 +179,8 @@ jobs:
               up -d --remove-orphans
             # Imagens antigas ocupam disco rápido; mantém 7 dias para rollback.
             docker image prune -f --filter "until=168h"
+            # Não deixa credencial efêmera no disco da VPS.
+            docker logout ghcr.io
 
   smoke:
     name: Smoke test

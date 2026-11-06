@@ -25,3 +25,8 @@ services:
   dashboard:
     image: ghcr.io/mandrecorrea5/ndovu-dashboard:${NDOVU_TAG:?defina NDOVU_TAG}
     build: !reset null
+
+  # Target `downloader` do Dockerfile do backend (python + yt-dlp + ffmpeg).
+  downloader:
+    image: ghcr.io/mandrecorrea5/ndovu-downloader:${NDOVU_TAG:?defina NDOVU_TAG}
+    build: !reset null
