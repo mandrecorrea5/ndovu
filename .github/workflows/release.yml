@@ -120,9 +120,13 @@ jobs:
           push: true
           cache-from: type=gha,scope=downloader
           cache-to: type=gha,mode=max,scope=downloader
+          # Publicado como tag do pacote ndovu-api: o pacote ndovu-downloader
+          # criado pelo GITHUB_TOKEN não recebeu write_package nas atualizações
+          # (só o ndovu-api tem "Actions access"). Reverta para um pacote
+          # próprio depois de linkar o repositório nas settings do pacote.
           tags: |
-            ${{ env.REGISTRY }}/${{ env.OWNER }}/ndovu-downloader:${{ steps.meta.outputs.tag }}
-            ${{ env.REGISTRY }}/${{ env.OWNER }}/ndovu-downloader:sha-${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/ndovu-api:downloader-${{ steps.meta.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/ndovu-api:downloader-sha-${{ github.sha }}
 
       - name: ndovu-dashboard
         uses: docker/build-push-action@v6

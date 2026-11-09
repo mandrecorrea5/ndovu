@@ -27,6 +27,8 @@ services:
     build: !reset null
 
   # Target `downloader` do Dockerfile do backend (python + yt-dlp + ffmpeg).
+  # Tag do pacote ndovu-api: o pacote ndovu-downloader não é gravável pelo
+  # GITHUB_TOKEN (write_package) — ver comentário no release.yml.
   downloader:
-    image: ghcr.io/mandrecorrea5/ndovu-downloader:${NDOVU_TAG:?defina NDOVU_TAG}
+    image: ghcr.io/mandrecorrea5/ndovu-api:downloader-${NDOVU_TAG:?defina NDOVU_TAG}
     build: !reset null
