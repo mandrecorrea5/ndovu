@@ -196,9 +196,13 @@ services:
       NDOVU_DOWNLOADER_JOB_TTL_HOURS: ${NDOVU_DOWNLOADER_JOB_TTL_HOURS:-24}
       # Vazio = ffmpeg do PATH (na imagem já vem de /usr/bin).
       NDOVU_FFMPEG_LOCATION: ${NDOVU_FFMPEG_LOCATION:-}
+      # cookies.txt do YouTube (Netscape). Vazio = sem cookies.
+      NDOVU_YTDLP_COOKIES: ${NDOVU_YTDLP_COOKIES:-}
       NDOVU_LOG_LEVEL: ${NDOVU_LOG_LEVEL:-info}
     volumes:
       - downloadsdata:/data/downloads
+      # cookies.txt fica fora do Git (ver .gitignore); mount read-only.
+      - ./secrets:/secrets:ro
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health')"]
       interval: 15s

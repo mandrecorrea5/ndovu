@@ -115,6 +115,25 @@ func TestFFmpegLocationFlag(t *testing.T) {
 	}
 }
 
+func TestCookiesFlag(t *testing.T) {
+	svc, _ := newTestService(t, 1)
+	svc.cfg.CookiesPath = "/secrets/cookies.txt"
+
+	job, err := svc.Create([]string{"https://youtu.be/dQw4w9WgXcQ"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	waitJob(t, svc, job.ID)
+
+	args, err := os.ReadFile(filepath.Join(svc.cfg.DataDir, job.ID, "args.txt"))
+	if err != nil {
+		t.Fatalf("lendo args: %v", err)
+	}
+	if !strings.Contains(string(args), "--cookies\n/secrets/cookies.txt") {
+		t.Fatalf("args sem --cookies:\n%s", args)
+	}
+}
+
 func TestJobPartialFailureWritesFalhas(t *testing.T) {
 	svc, _ := newTestService(t, 1)
 	job, err := svc.Create([]string{

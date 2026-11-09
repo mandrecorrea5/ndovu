@@ -82,9 +82,33 @@ Browser → BFF Next (/api/admin/downloads) → API Go (/v1/admin/downloads)
 | `NDOVU_DOWNLOADER_DATA_DIR` | `/data/downloads` | downloader |
 | `NDOVU_YTDLP_BIN` | `yt-dlp` | downloader |
 | `NDOVU_FFMPEG_LOCATION` | vazio (PATH) | downloader |
+| `NDOVU_YTDLP_COOKIES` | vazio (sem cookies) | downloader |
 
 Sem `NDOVU_DOWNLOADER_URL` a tela responde 503 ("downloader
 desabilitado") — o resto do Ndovu continua funcionando normalmente.
+
+## YouTube bloqueando o IP ("Sign in to confirm you're not a bot")
+
+IP de datacenter (VPS, cloud) é barrado pelo YouTube mesmo para conteúdo
+próprio. O yt-dlp responde com `Sign in to confirm you're not a bot`, e
+trocar o *player client* (`android`, `ios`, `tv_embedded`, `web_embedded`,
+`mweb`, `android_vr`) **não resolve** — testado. A saída é fornecer cookies
+de uma sessão logada:
+
+1. Exporte `cookies.txt` (formato Netscape) de um navegador logado no
+   YouTube — extensão "Get cookies.txt LOCALLY" ou `yt-dlp
+   --cookies-from-browser`.
+2. Coloque o arquivo em `secrets/cookies.txt` (local) ou
+   `/srv/apps/ndovu/secrets/cookies.txt` (produção). O diretório é montado
+   read-only em `/secrets` e está no `.gitignore`.
+3. Em produção, o container roda como uid `10001`:
+   `chown 10001:10001 secrets/cookies.txt && chmod 600 secrets/cookies.txt`.
+4. Defina `NDOVU_YTDLP_COOKIES=/secrets/cookies.txt` e recrie o serviço:
+   `docker compose ... up -d downloader`.
+
+> ⚠️ Cookies são credenciais da conta: expiram (às vezes em horas) e o uso
+> para download viola os Termos do YouTube — há risco de a conta ser
+> suspensa. Prefira uma conta descartável e nunca commite o arquivo.
 
 ## Papéis (RBAC)
 
@@ -109,7 +133,7 @@ desabilitado") — o resto do Ndovu continua funcionando normalmente.
   ou "The page needs to be reloaded"?** O YouTube bloqueia IP de
   datacenter e muda o player com frequência. O `yt-dlp` precisa ser
   atualizado (o rebuild da imagem faz `pip install -U yt-dlp`) e, em
-  casos extremos, exige cookies de uma conta.
+  casos extremos, exige cookies de uma conta (ver seção acima).
 - **O zip pode ser baixado mais de uma vez?** Sim, enquanto o job
   não expirar (24h). O arquivo é servido do disco do downloader.
 - **Playlist?** Não. Cada link é um vídeo; `--no-playlist` garante

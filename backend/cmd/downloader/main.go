@@ -32,6 +32,7 @@ type config struct {
 	Token          string
 	YTDLPBin       string
 	FFmpegLocation string
+	CookiesPath    string
 	MaxVideos      int
 	Concurrency    int
 	VideoTimeout   time.Duration
@@ -61,6 +62,7 @@ func run() error {
 		DataDir:        cfg.DataDir,
 		YTDLPBin:       cfg.YTDLPBin,
 		FFmpegLocation: cfg.FFmpegLocation,
+		CookiesPath:    cfg.CookiesPath,
 		MaxVideos:      cfg.MaxVideos,
 		Concurrency:    cfg.Concurrency,
 		VideoTimeout:   cfg.VideoTimeout,
@@ -217,6 +219,7 @@ func loadConfig() (config, error) {
 		Token:          token,
 		YTDLPBin:       envStr("NDOVU_YTDLP_BIN", "yt-dlp"),
 		FFmpegLocation: envStr("NDOVU_FFMPEG_LOCATION", ""),
+		CookiesPath:    envStr("NDOVU_YTDLP_COOKIES", ""),
 		MaxVideos:      envInt("NDOVU_DOWNLOADER_MAX_VIDEOS", 10),
 		Concurrency:    envInt("NDOVU_DOWNLOADER_CONCURRENCY", 1),
 		VideoTimeout:   time.Duration(envInt("NDOVU_DOWNLOADER_VIDEO_TIMEOUT_SECONDS", 600)) * time.Second,

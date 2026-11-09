@@ -40,6 +40,9 @@ logs/
 .DS_Store
 Thumbs.db
 
+# Segredos locais (cookies do YouTube para o downloader de MP3)
+secrets/
+
 # Temporários
 tmp/
 *.tmp

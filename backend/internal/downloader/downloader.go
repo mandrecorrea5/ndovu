@@ -61,6 +61,7 @@ type Config struct {
 	DataDir        string        // diretório raiz dos jobs
 	YTDLPBin       string        // binário do yt-dlp (default "yt-dlp")
 	FFmpegLocation string        // diretório/binário do ffmpeg (vazio = PATH)
+	CookiesPath    string        // cookies.txt do YouTube (vazio = sem cookies)
 	MaxVideos      int           // teto de vídeos por job
 	Concurrency    int           // jobs simultâneos
 	VideoTimeout   time.Duration // timeout por vídeo
@@ -282,6 +283,9 @@ func (s *Service) downloadOne(ctx context.Context, dir, videoURL string) error {
 	}
 	if s.cfg.FFmpegLocation != "" {
 		args = append(args, "--ffmpeg-location", s.cfg.FFmpegLocation)
+	}
+	if s.cfg.CookiesPath != "" {
+		args = append(args, "--cookies", s.cfg.CookiesPath)
 	}
 	args = append(args, videoURL)
 
