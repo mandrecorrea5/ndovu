@@ -167,7 +167,9 @@ services:
       NDOVU_ADMIN_EMAIL: ${NDOVU_ADMIN_EMAIL:-admin@ndovu.local}
       NDOVU_ADMIN_PASSWORD: ${NDOVU_ADMIN_PASSWORD:-admin12345}
       NDOVU_BOOTSTRAP_INGEST_KEY: ${NDOVU_BOOTSTRAP_INGEST_KEY:-dev-ingest-key}
-      NDOVU_DOWNLOADER_URL: http://downloader:8090
+      # Vazio (NDOVU_DOWNLOADER_URL=) desliga a feature: a API responde 503.
+      # Use ${VAR-default} (sem ":") para que o vazio não caia no default.
+      NDOVU_DOWNLOADER_URL: ${NDOVU_DOWNLOADER_URL-http://downloader:8090}
       NDOVU_DOWNLOADER_MAX_VIDEOS: ${NDOVU_DOWNLOADER_MAX_VIDEOS:-10}
     ports:
       - "18081:8080"
